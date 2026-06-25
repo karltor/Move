@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 180" width="260" height="180">
+  <!-- Tier 2: aero tucked rider with helmet -->
+  <g stroke="#6b46c1" stroke-width="9" stroke-linecap="round" fill="none">
+    <path d="M108 66 L150 48" />            <!-- torso, low aero tuck -->
+    <path d="M150 48 L178 56" />            <!-- arm to bars -->
+    <path d="M108 66 L148 102" />           <!-- leg to pedal -->
+  </g>
+  <path d="M150 38 a12 11 0 0 1 14 10 l-22 4 a12 11 0 0 1 8 -14 z" fill="#9f7aea" stroke="#44337a" stroke-width="2" />
+  <path d="M162 48 L176 50" stroke="#44337a" stroke-width="3" />  <!-- aero tail -->
+</svg>

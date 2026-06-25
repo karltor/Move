@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 180" width="260" height="180">
+  <!-- Tier 1: athletic leaning rider -->
+  <g stroke="#c53030" stroke-width="9" stroke-linecap="round" fill="none">
+    <path d="M110 70 L132 50" />            <!-- torso, leaning forward -->
+    <path d="M132 50 L168 58" />            <!-- arm to bars -->
+    <path d="M110 70 L150 106" />           <!-- leg to pedal -->
+  </g>
+  <circle cx="138" cy="44" r="11" fill="#fc8181" stroke="#742a2a" stroke-width="2" />
+</svg>

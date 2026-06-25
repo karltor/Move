@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 180" width="260" height="180">
+  <!-- Tier 2: fat carbon disc wheels -->
+  <g>
+    <circle cx="70" cy="131" r="34" fill="#dd6b20" />
+    <circle cx="70" cy="131" r="34" fill="none" stroke="#1a202c" stroke-width="7" />
+    <circle cx="190" cy="131" r="34" fill="#dd6b20" />
+    <circle cx="190" cy="131" r="34" fill="none" stroke="#1a202c" stroke-width="7" />
+  </g>
+  <g fill="#7b341e">
+    <circle cx="70" cy="131" r="6" />
+    <circle cx="190" cy="131" r="6" />
+  </g>
+</svg>
