@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 180" width="260" height="180">
+  <!-- Tier 2: sleek carbon aero frame -->
+  <g fill="none" stroke="#0d9488" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M70 131 L124 131 L110 76 Z" />
+    <path d="M124 131 L178 84" />
+    <path d="M110 76 L178 84" />
+    <path d="M178 84 L190 131" />
+  </g>
+  <path d="M92 66 L128 70 L122 76 L96 74 Z" fill="#134e4a" />
+  <line x1="178" y1="84" x2="182" y2="58" stroke="#134e4a" stroke-width="7" stroke-linecap="round" />
+  <line x1="170" y1="56" x2="198" y2="56" stroke="#134e4a" stroke-width="7" stroke-linecap="round" />
+</svg>

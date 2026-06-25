@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 180" width="260" height="180">
+  <!-- Tier 1: steel road frame -->
+  <g fill="none" stroke="#e53e3e" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M70 133 L122 133 L110 78 Z" />
+    <path d="M122 133 L176 86" />
+    <path d="M110 78 L176 86" />
+    <path d="M176 86 L190 133" />
+  </g>
+  <rect x="96" y="70" width="30" height="7" rx="3.5" fill="#9b2c2c" />
+  <line x1="176" y1="86" x2="180" y2="62" stroke="#9b2c2c" stroke-width="6" stroke-linecap="round" />
+  <line x1="166" y1="60" x2="194" y2="60" stroke="#9b2c2c" stroke-width="6" stroke-linecap="round" />
+</svg>

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 180" width="260" height="180">
+  <!-- Tier 0: casual upright rider -->
+  <g stroke="#2f855a" stroke-width="9" stroke-linecap="round" fill="none">
+    <path d="M111 74 L118 50" />            <!-- torso, upright -->
+    <path d="M118 50 L150 60" />            <!-- arm to bars -->
+    <path d="M111 74 L150 110" />           <!-- leg to pedal -->
+  </g>
+  <circle cx="118" cy="40" r="11" fill="#f6ad55" stroke="#975a16" stroke-width="2" />
+</svg>
