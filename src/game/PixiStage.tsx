@@ -1,66 +1,68 @@
-import {
-  forwardRef,
-  useEffect,
-  useImperativeHandle,
-  useRef,
-} from 'react';
-import { Application, Assets, Container, Graphics, Sprite, Text } from 'pixi.js';
+import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
+import { Application, Assets, Container, Graphics, Sprite } from 'pixi.js';
 import type { GameObjectDef } from '../data/types';
-import type { TrajectoryPoint } from '../sim/simulateLaunch';
-import { equippedVariant, type Equipped } from './stats';
+import {
+  rideStep,
+  initRideState,
+  DT,
+  type RideStats,
+  type RideState,
+  type RidePolicy,
+} from '../sim/ride';
+import { resolveArt, type AllocatedSet } from './tree';
 
-// Sim->screen mapping. Camera follows the object, so these can stay fixed.
-const PPU = 3; // pixels per simulation unit
+const PPU = 1.3; // pixels per simulation metre
 const CYCLIST_SCALE = 0.7;
-const GROUND_FROM_BOTTOM = 90; // px of ground baseline from canvas bottom
-const CAMERA_LEFT_FRAC = 0.22; // keep object this far from the left edge
-const ANIM_MS = 3200; // total launch animation duration (capped)
+const GROUND_FROM_BOTTOM = 86;
+const CAMERA_LEFT_FRAC = 0.2;
+const STEP_MS = 1000 * DT;
 
 export interface StageHandle {
-  /** Play a launch animation along `trajectory`, ticking distance via
-   *  onProgress and resolving via onComplete (both in sim units / coins). */
-  launch: (
-    trajectory: TrajectoryPoint[],
-    onProgress: (distance: number) => void,
-    onComplete: (distance: number) => void,
+  /** Begin a run with the given stats and pedalling policy. */
+  startRun: (
+    stats: RideStats,
+    policy: RidePolicy,
+    handlers: {
+      onTick: (state: RideState, stats: RideStats) => void;
+      onComplete: (final: RideState, stats: RideStats) => void;
+    },
   ) => void;
+  stopRun: () => void;
+  isRunning: () => boolean;
 }
 
 interface Props {
   object: GameObjectDef;
-  equipped: Equipped;
+  allocated: AllocatedSet;
 }
 
 /**
- * Imperative Pixi layer. It is object-agnostic: it renders whatever layered
- * composition the equipped variants describe and animates along whatever
- * trajectory it's handed. No cyclist-specific logic lives here.
+ * Imperative Pixi layer. Object-agnostic: it renders whatever layered
+ * composition the allocated art describes and steps the PURE ride physics in
+ * real time, with pedalling decided by whatever policy it's handed.
  */
 export const PixiStage = forwardRef<StageHandle, Props>(function PixiStage(
-  { object, equipped },
+  { object, allocated },
   ref,
 ) {
   const hostRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
   const worldRef = useRef<Container | null>(null);
+  const bgRef = useRef<Container | null>(null);
   const cyclistRef = useRef<Container | null>(null);
-  const fxRef = useRef<Container | null>(null);
 
-  // Animation state held in refs so the ticker can read/mutate without
-  // re-rendering React.
-  const animRef = useRef<{
-    points: TrajectoryPoint[];
-    elapsed: number;
-    playing: boolean;
-    onProgress: (d: number) => void;
-    onComplete: (d: number) => void;
+  const runRef = useRef<{
+    stats: RideStats;
+    policy: RidePolicy;
+    state: RideState;
+    acc: number;
+    onTick: (s: RideState, st: RideStats) => void;
+    onComplete: (s: RideState, st: RideStats) => void;
   } | null>(null);
 
-  // Keep latest equipped/object available to async rebuilds.
-  const latest = useRef({ object, equipped });
-  latest.current = { object, equipped };
+  const latest = useRef({ object, allocated });
+  latest.current = { object, allocated };
 
-  // --- Pixi app lifecycle ---------------------------------------------------
   useEffect(() => {
     let destroyed = false;
     const app = new Application();
@@ -80,85 +82,83 @@ export const PixiStage = forwardRef<StageHandle, Props>(function PixiStage(
       appRef.current = app;
       hostRef.current?.appendChild(app.canvas);
 
+      const bg = new Container();
+      app.stage.addChild(bg);
+      bgRef.current = bg;
+      drawBackground(bg, app);
+
       const world = new Container();
       app.stage.addChild(world);
       worldRef.current = world;
-
       drawGround(world, app);
 
       const cyclist = new Container();
       world.addChild(cyclist);
       cyclistRef.current = cyclist;
 
-      const fx = new Container();
-      world.addChild(fx);
-      fxRef.current = fx;
-
       await rebuildComposition();
       placeAtStart();
 
-      app.ticker.add((ticker) => tick(ticker.deltaMS));
+      app.ticker.add((t) => tick(t.deltaMS));
     })();
 
     return () => {
       destroyed = true;
       appRef.current = null;
       worldRef.current = null;
+      bgRef.current = null;
       cyclistRef.current = null;
-      fxRef.current = null;
-      animRef.current = null;
+      runRef.current = null;
       app.destroy(true);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Rebuild the layered composition whenever equipped parts change.
   useEffect(() => {
     rebuildComposition();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [equipped, object]);
+  }, [allocated, object]);
 
-  // --- helpers --------------------------------------------------------------
   function groundY(app: Application): number {
     return app.screen.height - GROUND_FROM_BOTTOM;
   }
 
+  function drawBackground(bg: Container, app: Application) {
+    const g = new Graphics();
+    const gy = groundY(app);
+    // Rolling hills for parallax depth.
+    for (let i = -2; i < 40; i++) {
+      const cx = i * 320;
+      g.ellipse(cx, gy + 30, 240, 150).fill(i % 2 ? '#9ad27a' : '#86c267');
+    }
+    bg.addChild(g);
+  }
+
   function drawGround(world: Container, app: Application) {
     const g = new Graphics();
-    const h = app.screen.height;
-    // Long ground strip well beyond any plausible run.
-    g.rect(-200, groundY(app), 200000, h).fill('#5a8f3c');
-    g.rect(-200, groundY(app), 200000, 6).fill('#3f6e29');
-    // Distance stripes every 50 units for a sense of speed.
-    for (let u = 0; u <= 60000; u += 50) {
-      const x = u * PPU;
-      g.rect(x, groundY(app) + 14, 3, 10).fill('#cfe9b8');
+    const gy = groundY(app);
+    g.rect(-400, gy, 400000, app.screen.height).fill('#5a8f3c');
+    g.rect(-400, gy, 400000, 6).fill('#3f6e29');
+    for (let u = 0; u <= 300000; u += 25) {
+      g.rect(u * PPU, gy + 14, 3, 9).fill('#cfe9b8');
     }
-    // A little launch ramp at the origin.
-    g.moveTo(-90, groundY(app))
-      .lineTo(0, groundY(app) - 46)
-      .lineTo(0, groundY(app))
-      .closePath()
-      .fill('#8a5a2b');
+    // Start ramp.
+    g.moveTo(-70, gy).lineTo(0, gy - 30).lineTo(0, gy).closePath().fill('#8a5a2b');
     world.addChildAt(g, 0);
   }
 
   async function rebuildComposition() {
     const cyclist = cyclistRef.current;
     if (!cyclist) return;
-    const { object: obj, equipped: eq } = latest.current;
-
-    const slots = [...obj.slots].sort((a, b) => a.z - b.z);
-    const urls = slots.map((s) => equippedVariant(obj, s.id, eq).svg);
+    const { object: obj, allocated: alloc } = latest.current;
+    const layers = resolveArt(obj, alloc);
+    const urls = layers.map((l) => l.svg);
     const textures = await Assets.load(urls);
-    if (!cyclistRef.current) return; // unmounted mid-load
+    if (!cyclistRef.current) return;
 
     cyclist.removeChildren();
-    for (const slot of slots) {
-      const url = equippedVariant(obj, slot.id, eq).svg;
-      const sprite = new Sprite(textures[url]);
-      // All variants share one 260x180 viewBox; anchor at the ground-contact
-      // point (~x center, ~wheel bottom) so layers align and sit on the road.
+    for (const layer of layers) {
+      const sprite = new Sprite(textures[layer.svg]);
       sprite.anchor.set(0.5, 0.9);
       sprite.scale.set(CYCLIST_SCALE);
       cyclist.addChild(sprite);
@@ -175,95 +175,68 @@ export const PixiStage = forwardRef<StageHandle, Props>(function PixiStage(
     cyclist.rotation = 0;
     world.x = app.screen.width * CAMERA_LEFT_FRAC;
     world.y = 0;
-  }
-
-  function sample(points: TrajectoryPoint[], t: number): TrajectoryPoint {
-    // t in [0,1] across the whole path, linearly interpolated.
-    if (points.length === 1) return points[0];
-    const f = Math.min(1, Math.max(0, t)) * (points.length - 1);
-    const i = Math.floor(f);
-    const frac = f - i;
-    const a = points[i];
-    const b = points[Math.min(points.length - 1, i + 1)];
-    return { x: a.x + (b.x - a.x) * frac, y: a.y + (b.y - a.y) * frac };
+    if (bgRef.current) bgRef.current.x = world.x * 0.5;
   }
 
   function tick(deltaMS: number) {
     const app = appRef.current;
     const cyclist = cyclistRef.current;
     const world = worldRef.current;
-    const anim = animRef.current;
+    const run = runRef.current;
     if (!app || !cyclist || !world) return;
+    if (!run) return;
 
-    // Fade/float any FX (coin pops).
-    const fx = fxRef.current;
-    if (fx) {
-      for (const child of [...fx.children]) {
-        child.y -= deltaMS * 0.04;
-        child.alpha -= deltaMS * 0.0011;
-        if (child.alpha <= 0) fx.removeChild(child);
+    // Fixed-step integration for stable, policy-consistent physics.
+    run.acc += Math.min(deltaMS, 250);
+    let finished = false;
+    while (run.acc >= STEP_MS) {
+      const pedal = run.policy(run.state, run.stats);
+      run.state = rideStep(run.state, run.stats, pedal, DT);
+      run.acc -= STEP_MS;
+      if (run.state.t >= run.stats.runTime) {
+        finished = true;
+        break;
       }
     }
 
-    if (!anim || !anim.playing) return;
-
-    anim.elapsed += deltaMS;
-    const t = anim.elapsed / ANIM_MS;
-    const p = sample(anim.points, t);
-
-    const screenX = p.x * PPU;
+    const screenX = run.state.x * PPU;
     cyclist.x = screenX;
-    cyclist.y = groundY(app) - p.y * PPU;
-    // Tilt with vertical motion for a bit of juice.
-    const ahead = sample(anim.points, t + 0.01);
-    const dx = (ahead.x - p.x) * PPU;
-    const dy = -(ahead.y - p.y) * PPU;
-    cyclist.rotation = dx !== 0 ? Math.atan2(dy, dx) * 0.5 : 0;
+    // Bob + lean a touch with speed for some juice.
+    const speedFrac = run.state.v / Math.max(2, run.stats.topSpeed);
+    cyclist.y = groundY(app) - Math.sin(run.state.t * 14) * speedFrac * 3;
+    cyclist.rotation = -speedFrac * 0.05;
 
-    // Camera follows.
     world.x = app.screen.width * CAMERA_LEFT_FRAC - screenX;
+    if (bgRef.current) bgRef.current.x = world.x * 0.5;
 
-    anim.onProgress(p.x);
+    run.onTick(run.state, run.stats);
 
-    if (t >= 1) {
-      anim.playing = false;
-      cyclist.rotation = 0;
-      const finalX = anim.points[anim.points.length - 1].x;
-      spawnCoinPop(finalX, Math.floor(finalX));
-      anim.onComplete(finalX);
+    if (finished) {
+      const final = run.state;
+      const stats = run.stats;
+      const done = run.onComplete;
+      runRef.current = null;
+      done(final, stats);
     }
   }
 
-  function spawnCoinPop(simX: number, coins: number) {
-    const app = appRef.current;
-    const fx = fxRef.current;
-    if (!app || !fx) return;
-    const label = new Text({
-      text: `+${coins} 🪙`,
-      style: { fontFamily: 'system-ui, sans-serif', fontSize: 28, fill: '#1a202c', fontWeight: '800' },
-    });
-    label.anchor.set(0.5, 1);
-    label.x = simX * PPU;
-    label.y = groundY(app) - 60;
-    fx.addChild(label);
-  }
-
-  // --- imperative API -------------------------------------------------------
   useImperativeHandle(ref, () => ({
-    launch: (trajectory, onProgress, onComplete) => {
-      if (!trajectory.length) {
-        onComplete(0);
-        return;
-      }
+    startRun: (stats, policy, handlers) => {
       placeAtStart();
-      animRef.current = {
-        points: trajectory,
-        elapsed: 0,
-        playing: true,
-        onProgress,
-        onComplete,
+      runRef.current = {
+        stats,
+        policy,
+        state: initRideState(stats),
+        acc: 0,
+        onTick: handlers.onTick,
+        onComplete: handlers.onComplete,
       };
     },
+    stopRun: () => {
+      runRef.current = null;
+      placeAtStart();
+    },
+    isRunning: () => runRef.current !== null,
   }));
 
   return <div ref={hostRef} className="stage-host" />;

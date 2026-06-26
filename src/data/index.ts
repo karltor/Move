@@ -4,9 +4,11 @@ import { cyclist } from './cyclist';
 // ---------------------------------------------------------------------------
 // OBJECT REGISTRY
 // ---------------------------------------------------------------------------
-// EXTENSION POINT: register additional objects here once their data file and
-// SVGs exist (e.g. `rocket`, `cannonball`, `train`). The store, simulation and
-// UI all read from this registry by id and need no further changes.
+// EXTENSION POINT: register additional main objects here once their data file
+// and SVGs exist (roller skates, car, train, particle…). Each brings its own
+// passive tree and specialities. The store, simulation and UI all read from
+// this registry by id and need no further changes. Only one main object is
+// active at a time (the root node of its tree); switching is a respec.
 export const OBJECTS: Record<string, GameObjectDef> = {
   [cyclist.id]: cyclist,
 };
@@ -20,4 +22,14 @@ export function getObject(id: string): GameObjectDef {
   return obj;
 }
 
-export type { GameObjectDef, SlotDef, PartVariant, StatKey, StatContributions } from './types';
+export type {
+  GameObjectDef,
+  SlotDef,
+  TreeNode,
+  TreeEdge,
+  PassiveTree,
+  StatKey,
+  StatMod,
+  CurrencyId,
+  NodeKind,
+} from './types';
