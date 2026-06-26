@@ -17,7 +17,7 @@ import {
 import { simulateRide, autoPilot } from '../sim/ride';
 
 // Bump when the persisted shape changes; handle old shapes in `migrate`.
-const SAVE_VERSION = 2;
+const SAVE_VERSION = 3;
 
 // Offline catch-up tuning.
 const OFFLINE_EFFICIENCY = 0.5; // away runs earn half of an auto-pilot run
@@ -40,6 +40,7 @@ export interface GameState {
   autoRun: boolean;
   lastActive: number; // epoch ms
   pendingOffline: OfflineReport | null;
+  introSeen: boolean;
 
   // --- actions ---
   /** Award currencies for a run. `activeMult` (>=1) rewards active pedalling
@@ -50,6 +51,7 @@ export interface GameState {
   setAutoRun: (on: boolean) => void;
   claimOffline: () => void;
   touchActive: () => void;
+  setIntroSeen: () => void;
   reset: () => void;
 }
 
@@ -67,6 +69,7 @@ const initial = {
   autoRun: false,
   lastActive: Date.now(),
   pendingOffline: null as OfflineReport | null,
+  introSeen: false,
 };
 
 const storage: PersistStorage<GameState> = {
@@ -101,10 +104,14 @@ function computeOffline(state: GameState): OfflineReport | null {
   const obj = getObject(state.objectId);
   const stats = aggregateStats(obj, state.allocated);
   const capped = Math.min(elapsed, MAX_OFFLINE_SECONDS);
-  const runs = Math.floor(capped / stats.runTime);
+
+  // Runs have variable duration now, so simulate one idle run to learn both its
+  // length and its yield, then scale by how many fit in the elapsed window.
+  const { metrics, final } = simulateRide(stats, autoPilot);
+  const perRunSeconds = Math.max(1, final.t);
+  const runs = Math.floor(capped / perRunSeconds);
   if (runs <= 0) return null;
 
-  const { metrics } = simulateRide(stats, autoPilot);
   const per = awardsFor(metrics);
   const awards = emptyWallet();
   for (const id of Object.keys(awards) as CurrencyId[]) {
@@ -187,6 +194,8 @@ export const useGameStore = create<GameState>()(
 
       touchActive: () => set({ lastActive: Date.now() }),
 
+      setIntroSeen: () => set({ introSeen: true }),
+
       reset: () =>
         set({
           ...initial,
@@ -199,17 +208,26 @@ export const useGameStore = create<GameState>()(
       name: 'move.save',
       storage,
       version: SAVE_VERSION,
-      // SAVE MIGRATION — keyed on the persisted version. v1 was the old
-      // slot/variant prototype; map its coins forward and reset the tree.
+      // SAVE MIGRATION — keyed on the persisted version.
+      //   v1: slot/variant launch prototype (had `coins`, `equipped`).
+      //   v2: passive-tree cyclist (wallet coins/tempo/rush/momentum).
+      //   v3: scientist-on-foot reframe (wallet grants/pace/kinetic/momentum;
+      //       new stats + tree). Salvage funding and counters, reset the tree.
       migrate: (persisted, fromVersion) => {
         const anyState = persisted as Record<string, unknown> | undefined;
         if (!anyState) return { ...initial } as GameState;
 
-        if (fromVersion < 2) {
-          // v1 -> v2: carry coins + best/run counters, drop equipped slots,
-          // start the passive tree at the root.
+        if (fromVersion < 3) {
+          const oldWallet = (anyState.wallet ?? {}) as Record<string, number>;
           const wallet = emptyWallet();
-          if (typeof anyState.coins === 'number') wallet.coins = anyState.coins;
+          // Old primary currency (v1 `coins`, v2 `coins`) -> grants.
+          wallet.grants =
+            (typeof anyState.coins === 'number' ? anyState.coins : 0) +
+            (oldWallet.coins ?? 0);
+          // v2 secondary currencies map across where sensible.
+          wallet.pace += oldWallet.tempo ?? 0;
+          wallet.kinetic += oldWallet.rush ?? 0;
+          wallet.momentum += oldWallet.momentum ?? 0;
           return {
             ...initial,
             wallet,
@@ -217,11 +235,11 @@ export const useGameStore = create<GameState>()(
             bestDistance:
               typeof anyState.bestDistance === 'number' ? anyState.bestDistance : 0,
             runCount: typeof anyState.runCount === 'number' ? anyState.runCount : 0,
+            introSeen: false,
             lastActive: Date.now(),
           } as GameState;
         }
 
-        // Same version: merge onto defaults so new fields are present.
         return {
           ...initial,
           ...(anyState as Partial<GameState>),
@@ -237,6 +255,7 @@ export const useGameStore = create<GameState>()(
         runCount: s.runCount,
         autoRun: s.autoRun,
         lastActive: s.lastActive,
+        introSeen: s.introSeen,
       }) as GameState,
       // After load, compute offline catch-up and stash it for a welcome-back.
       onRehydrateStorage: () => (state) => {

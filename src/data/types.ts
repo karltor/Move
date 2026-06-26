@@ -17,23 +17,25 @@
 // respec, handled generically by the store.
 // ---------------------------------------------------------------------------
 
-/** Stats the ride simulation understands. Add a key here + handle it in
+/** Stats the simulation understands. Add a key here + handle it in
  *  `src/sim/ride.ts` to introduce a new gameplay dimension for every object. */
 export type StatKey =
-  | 'pedalPower' // forward force applied while actively pedaling
-  | 'maxStamina' // stamina pool that pedaling consumes
-  | 'staminaRegen' // stamina/sec recovered while coasting
-  | 'staminaDrain' // stamina/sec spent while pedaling
+  | 'walkPower' // base forward force, always on while energy remains (no stamina)
+  | 'runPower' // extra force while exerting (costs stamina)
+  | 'maxStamina' // fast burst pool
+  | 'staminaRefill' // stamina/sec refilled from the reserve while easing off
+  | 'runDrain' // stamina/sec spent while exerting
+  | 'maxReserve' // total energy available for one run
+  | 'energyBurn' // reserve/sec consumed by locomotion (base rate)
   | 'drag' // quadratic air resistance coefficient (lower = better)
-  | 'weight' // mass (affects accel, momentum currency, drag damping)
+  | 'weight' // mass (affects accel, momentum/KE currencies, drag damping)
   | 'rollResist' // constant ground deceleration (lower = better)
-  | 'topSpeed' // soft speed cap; pedal force fades as you approach it
-  | 'runTime' // how many seconds a single run lasts
-  | 'battery'; // speciality: battery capacity that auto-assists (0 = none)
+  | 'topSpeed' // soft speed cap; force fades as you approach it
+  | 'assist'; // speciality: passive force from the reserve (0 = none)
 
 /** Currencies are derived from a run's metrics (see `src/data/currencies.ts`).
  *  Tree nodes can cost any mix of them. */
-export type CurrencyId = 'coins' | 'tempo' | 'rush' | 'momentum';
+export type CurrencyId = 'grants' | 'pace' | 'kinetic' | 'momentum';
 
 /** A single stat modifier granted by a tree node. `add` is applied in the
  *  additive pass, `mul` in a later multiplicative pass. */
@@ -85,13 +87,22 @@ export interface PassiveTree {
   edges: TreeEdge[];
 }
 
+/** How the canvas should draw this object.
+ *  - 'walker'  : a procedurally-animated person (the scientist on foot).
+ *  - 'layers'  : a layered SVG composition (the future bicycle etc.).
+ *  EXTENSION POINT: add a renderer kind here + handle it in PixiStage. */
+export type RenderKind = 'walker' | 'layers';
+
 /** A complete launchable object. */
 export interface GameObjectDef {
   id: string;
   name: string;
+  /** Which canvas renderer to use. */
+  renderKind: RenderKind;
   /** Baseline stats before any tree nodes are allocated. */
   baseStats: Record<StatKey, number>;
-  /** Default composition layers; tree nodes' `setArt` override per slot. */
+  /** Composition layers for 'layers' renderKind; tree `setArt` overrides per
+   *  slot. Empty/omitted for procedural renderers like 'walker'. */
   slots: SlotDef[];
   /** The passive skill tree for this object (includes its specialities). */
   tree: PassiveTree;

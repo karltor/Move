@@ -18,16 +18,18 @@ const R: Record<TreeNode['kind'], number> = {
 };
 
 const STAT_LABELS: Record<StatKey, string> = {
-  pedalPower: 'Pedal Power',
+  walkPower: 'Walk Power',
+  runPower: 'Run Power',
   maxStamina: 'Max Stamina',
-  staminaRegen: 'Stamina Regen',
-  staminaDrain: 'Stamina Drain',
+  staminaRefill: 'Stamina Refill',
+  runDrain: 'Stamina Drain',
+  maxReserve: 'Max Energy',
+  energyBurn: 'Energy Burn',
   drag: 'Drag',
   weight: 'Weight',
   rollResist: 'Roll Resist',
   topSpeed: 'Top Speed',
-  runTime: 'Run Time',
-  battery: 'Battery',
+  assist: 'Assist',
 };
 
 interface Props {
@@ -36,9 +38,10 @@ interface Props {
   wallet: Wallet;
   onAllocate: (id: string) => void;
   onRespec: () => void;
+  onClose?: () => void;
 }
 
-export function SkillTree({ object, allocated, wallet, onAllocate, onRespec }: Props) {
+export function SkillTree({ object, allocated, wallet, onAllocate, onRespec, onClose }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const drag = useRef<{ x: number; y: number; px: number; py: number; moved: boolean } | null>(
@@ -118,10 +121,17 @@ export function SkillTree({ object, allocated, wallet, onAllocate, onRespec }: P
   return (
     <section className="tree">
       <header className="tree-header">
-        <h2>{object.name} — Passive Tree</h2>
-        <button className="respec-btn" onClick={onRespec} title="Refund all points">
-          ⟲ Respec
-        </button>
+        <h2>🔬 {object.name} — Upgrade Lab</h2>
+        <div className="tree-header-actions">
+          <button className="respec-btn" onClick={onRespec} title="Refund all points">
+            ⟲ Respec
+          </button>
+          {onClose && (
+            <button className="tree-close" onClick={onClose} title="Close (the run keeps going)">
+              ✕
+            </button>
+          )}
+        </div>
       </header>
 
       <div className="tree-note">
@@ -177,9 +187,13 @@ export function SkillTree({ object, allocated, wallet, onAllocate, onRespec }: P
                   ) : (
                     <circle r={R[n.kind]} />
                   )}
-                  <text className="node-label" y={R[n.kind] + 14}>
-                    {n.name}
-                  </text>
+                  {/* Only label the important nodes (or the selected one) so
+                      the graph stays readable. */}
+                  {(n.kind !== 'minor' || selectedId === n.id) && (
+                    <text className="node-label" y={R[n.kind] + 14}>
+                      {n.name}
+                    </text>
+                  )}
                 </g>
               ))}
             </g>
@@ -265,7 +279,11 @@ function round(n: number): number {
 // For drag/weight/staminaDrain/rollResist, lower is better.
 function modGood(stat: StatKey, m: { add?: number; mul?: number }): boolean {
   const lowerBetter =
-    stat === 'drag' || stat === 'weight' || stat === 'staminaDrain' || stat === 'rollResist';
+    stat === 'drag' ||
+    stat === 'weight' ||
+    stat === 'runDrain' ||
+    stat === 'rollResist' ||
+    stat === 'energyBurn';
   const delta = m.add != null ? m.add : (m.mul ?? 1) - 1;
   return lowerBetter ? delta < 0 : delta > 0;
 }

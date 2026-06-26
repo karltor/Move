@@ -15,6 +15,7 @@ import { Hud } from './ui/Hud';
 import { RideBars } from './ui/RideBars';
 import { SkillTree } from './ui/SkillTree';
 import { WelcomeBack } from './ui/WelcomeBack';
+import { Intro } from './ui/Intro';
 import type { CurrencyId } from './data/types';
 import './App.css';
 
@@ -26,12 +27,14 @@ export default function App() {
   const runCount = useGameStore((s) => s.runCount);
   const autoRun = useGameStore((s) => s.autoRun);
   const pendingOffline = useGameStore((s) => s.pendingOffline);
+  const introSeen = useGameStore((s) => s.introSeen);
   const addRunRewards = useGameStore((s) => s.addRunRewards);
   const allocate = useGameStore((s) => s.allocate);
   const respec = useGameStore((s) => s.respec);
   const setAutoRun = useGameStore((s) => s.setAutoRun);
   const claimOffline = useGameStore((s) => s.claimOffline);
   const touchActive = useGameStore((s) => s.touchActive);
+  const setIntroSeen = useGameStore((s) => s.setIntroSeen);
 
   const object = getObject(objectId);
   const stats = useMemo(() => aggregateStats(object, allocated), [object, allocated]);
@@ -47,22 +50,19 @@ export default function App() {
 
   const [running, setRunning] = useState(false);
   const [live, setLive] = useState<RideState | null>(null);
+  const [treeOpen, setTreeOpen] = useState(false);
   const [toast, setToast] = useState<{
     awards: Record<CurrencyId, number>;
     mult: number;
     key: number;
   } | null>(null);
 
-  // Stable pedalling policies. Loop policy lets the player intervene on top of
-  // the auto-pilot (active play earns more); manual policy is pure hold input.
   const loopPolicy = useRef<RidePolicy>((s, st) => heldRef.current || autoPilot(s, st)).current;
   const manualPolicy = useRef<RidePolicy>(() => heldRef.current).current;
 
   const onTick = useCallback((s: RideState) => {
-    // Sample active input every frame to reward presence (see onComplete).
     totalTicks.current++;
     if (heldRef.current) activeTicks.current++;
-    // Throttle React updates to ~20Hz; physics still steps at 60Hz.
     if (tickCount.current++ % 3 === 0) setLive(s);
   }, []);
 
@@ -70,7 +70,6 @@ export default function App() {
     (policy: RidePolicy) => {
       const stage = stageRef.current;
       if (!stage) return;
-      // Read fresh stats at the moment of launch.
       const st = useGameStore.getState();
       const runStats: RideStats = aggregateStats(getObject(st.objectId), st.allocated);
       runningRef.current = true;
@@ -82,8 +81,6 @@ export default function App() {
         onTick,
         onComplete: (final, finalStats) => {
           const metrics: RunMetrics = metricsFor(finalStats, final);
-          // Active bonus: up to ~2.5x for pedalling the whole run yourself,
-          // 1x for a fully idle auto-run. This is how active play out-earns idle.
           const activeFrac = totalTicks.current
             ? activeTicks.current / totalTicks.current
             : 0;
@@ -92,7 +89,7 @@ export default function App() {
           setLive(final);
           setToast({ awards, mult, key: Date.now() });
           if (autoRunRef.current) {
-            window.setTimeout(() => beginRun(loopPolicy), 550);
+            window.setTimeout(() => beginRun(loopPolicy), 600);
           } else {
             runningRef.current = false;
             setRunning(false);
@@ -103,7 +100,7 @@ export default function App() {
     [addRunRewards, onTick, loopPolicy],
   );
 
-  const handleManualLaunch = useCallback(() => {
+  const handleManualRun = useCallback(() => {
     if (runningRef.current) return;
     beginRun(manualPolicy);
   }, [beginRun, manualPolicy]);
@@ -115,18 +112,21 @@ export default function App() {
     if (on && !runningRef.current) beginRun(loopPolicy);
   }, [beginRun, loopPolicy, setAutoRun]);
 
-  // Resume an auto-run loop if it was persisted on, once the stage is ready.
+  // Resume a persisted auto-run loop once the stage is ready (after intro).
   useEffect(() => {
+    if (!introSeen) return;
     const id = window.setTimeout(() => {
       if (autoRunRef.current && !runningRef.current) beginRun(loopPolicy);
     }, 300);
     return () => window.clearTimeout(id);
-  }, [beginRun, loopPolicy]);
+  }, [beginRun, loopPolicy, introSeen]);
 
-  // Hold-to-pedal input (pointer on the stage + Space anywhere).
+  // Hold-to-run input (pointer on the stage + Space). Ignored while a modal is
+  // open so the player can read/click upgrades without triggering a run.
   useEffect(() => {
+    const blocked = () => treeOpen || !introSeen || !!pendingOffline;
     const down = (e: KeyboardEvent) => {
-      if (e.code !== 'Space' || e.repeat) return;
+      if (e.code !== 'Space' || e.repeat || blocked()) return;
       e.preventDefault();
       heldRef.current = true;
       if (!runningRef.current && !autoRunRef.current) beginRun(manualPolicy);
@@ -140,9 +140,8 @@ export default function App() {
       window.removeEventListener('keydown', down);
       window.removeEventListener('keyup', up);
     };
-  }, [beginRun, manualPolicy]);
+  }, [beginRun, manualPolicy, treeOpen, introSeen, pendingOffline]);
 
-  // Record when the player leaves, so offline catch-up is measured correctly.
   useEffect(() => {
     const onHide = () => {
       if (document.visibilityState === 'hidden') touchActive();
@@ -156,6 +155,7 @@ export default function App() {
   }, [touchActive]);
 
   const liveDistance = live ? live.x : 0;
+  const canRunInput = introSeen && !treeOpen && !pendingOffline;
 
   return (
     <div className="app">
@@ -170,6 +170,7 @@ export default function App() {
         <div
           className="stage-wrap"
           onPointerDown={() => {
+            if (!canRunInput) return;
             heldRef.current = true;
             if (!runningRef.current && !autoRunRef.current) beginRun(manualPolicy);
           }}
@@ -179,7 +180,7 @@ export default function App() {
           <PixiStage ref={stageRef} object={object} allocated={allocated} />
           <RideBars state={live} stats={stats} running={running} />
           {!running && (
-            <div className="stage-hint">Hold to pedal · release to coast &amp; recover</div>
+            <div className="stage-hint">Hold to run · ease off to refill stamina</div>
           )}
           {toast && (
             <div className="reward-toast" key={toast.key}>
@@ -200,9 +201,12 @@ export default function App() {
             className="launch-btn"
             disabled={running || autoRun}
             onMouseDown={(e) => e.preventDefault()}
-            onClick={handleManualLaunch}
+            onClick={handleManualRun}
           >
-            {running ? 'Riding…' : '🚴 Ride! (hold Space)'}
+            {running ? 'Running…' : '🏃 Run! (hold Space)'}
+          </button>
+          <button className="lab-btn" onClick={() => setTreeOpen(true)}>
+            🔬 Upgrades
           </button>
           <label className="autorun-toggle">
             <input type="checkbox" checked={autoRun} onChange={toggleAutoRun} />
@@ -211,15 +215,25 @@ export default function App() {
         </div>
       </div>
 
-      <SkillTree
-        object={object}
-        allocated={allocated}
-        wallet={wallet}
-        onAllocate={allocate}
-        onRespec={respec}
-      />
+      {treeOpen && (
+        <div className="modal-backdrop tree-backdrop" onClick={() => setTreeOpen(false)}>
+          <div className="tree-modal" onClick={(e) => e.stopPropagation()}>
+            <SkillTree
+              object={object}
+              allocated={allocated}
+              wallet={wallet}
+              onAllocate={allocate}
+              onRespec={respec}
+              onClose={() => setTreeOpen(false)}
+            />
+          </div>
+        </div>
+      )}
 
-      {pendingOffline && <WelcomeBack report={pendingOffline} onClaim={claimOffline} />}
+      {!introSeen && <Intro onDone={setIntroSeen} />}
+      {introSeen && pendingOffline && (
+        <WelcomeBack report={pendingOffline} onClaim={claimOffline} />
+      )}
     </div>
   );
 }

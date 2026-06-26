@@ -1,20 +1,22 @@
 import type { GameObjectDef } from './types';
-import { cyclist } from './cyclist';
+import { scientist } from './scientist';
 
 // ---------------------------------------------------------------------------
 // OBJECT REGISTRY
 // ---------------------------------------------------------------------------
 // EXTENSION POINT: register additional main objects here once their data file
-// and SVGs exist (roller skates, car, train, particle…). Each brings its own
-// passive tree and specialities. The store, simulation and UI all read from
-// this registry by id and need no further changes. Only one main object is
-// active at a time (the root node of its tree); switching is a respec.
+// and art exist. Planned progression:
+//   scientist (on foot)  ->  bicycle (rotational motion, 'layers' renderKind
+//   with spinning wheels)  ->  faster vehicles  ->  relativistic regimes.
+// Each brings its own passive tree and specialities. The store, simulation and
+// UI all read from this registry by id and need no further changes. Only one
+// main object is active at a time; switching is a respec.
 export const OBJECTS: Record<string, GameObjectDef> = {
-  [cyclist.id]: cyclist,
+  [scientist.id]: scientist,
 };
 
-/** The object active in this prototype. Later this becomes a player choice. */
-export const ACTIVE_OBJECT_ID = cyclist.id;
+/** The object active in this prototype. */
+export const ACTIVE_OBJECT_ID = scientist.id;
 
 export function getObject(id: string): GameObjectDef {
   const obj = OBJECTS[id];
@@ -32,4 +34,5 @@ export type {
   StatMod,
   CurrencyId,
   NodeKind,
+  RenderKind,
 } from './types';

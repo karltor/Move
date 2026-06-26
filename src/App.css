@@ -1,31 +1,23 @@
 .app {
-  display: grid;
-  grid-template-columns: 1fr 440px;
-  gap: 16px;
   height: 100%;
   padding: 16px;
 }
 
-@media (max-width: 980px) {
-  .app {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto auto;
-    height: auto;
-  }
-}
-
-/* --- stage column --- */
+/* --- stage column (now full width; upgrades live in a modal) --- */
 .stage-col {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  height: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
   min-width: 0;
 }
 
 .stage-wrap {
   position: relative;
   flex: 1;
-  min-height: 380px;
+  min-height: 420px;
   border-radius: 14px;
   overflow: hidden;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
@@ -143,8 +135,8 @@
 .bar-fill.stamina {
   background: linear-gradient(90deg, #48bb78, #2f855a);
 }
-.bar-fill.battery {
-  background: linear-gradient(90deg, #f6e05e, #d69e2e);
+.bar-fill.energy {
+  background: linear-gradient(90deg, #f6e05e, #dd6b20);
 }
 
 /* --- HUD --- */
@@ -246,6 +238,23 @@
   opacity: 0.8;
   cursor: default;
 }
+.lab-btn {
+  font-size: 16px;
+  font-weight: 800;
+  color: #2d3748;
+  background: #fff;
+  border: 2px solid #cbd5e0;
+  border-radius: 12px;
+  padding: 11px 22px;
+  cursor: pointer;
+  transition: border-color 0.12s ease, transform 0.08s ease;
+}
+.lab-btn:hover {
+  border-color: var(--accent);
+}
+.lab-btn:active {
+  transform: translateY(1px);
+}
 .autorun-toggle {
   display: flex;
   align-items: center;
@@ -264,13 +273,34 @@
 /* --- skill tree panel --- */
 .tree {
   background: var(--panel);
-  border-radius: 14px;
-  padding: 14px 16px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+  border-radius: 16px;
+  padding: 16px 18px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
   display: flex;
   flex-direction: column;
   gap: 10px;
   min-height: 0;
+  height: 100%;
+  width: 100%;
+}
+.tree-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tree-close {
+  font-size: 15px;
+  font-weight: 800;
+  color: #4a5568;
+  background: #edf2f7;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+}
+.tree-close:hover {
+  background: #e2e8f0;
 }
 .tree-header {
   display: flex;
@@ -307,7 +337,7 @@
   flex: 1;
   min-height: 320px;
   border-radius: 12px;
-  background: radial-gradient(circle at 50% 45%, #1a2230 0%, #0e1320 100%);
+  background: radial-gradient(circle at 50% 42%, #20304d 0%, #131b2e 100%);
   overflow: hidden;
   cursor: grab;
   touch-action: none;
@@ -529,4 +559,92 @@
 }
 .muted {
   color: #a0aec0;
+}
+
+/* --- tree modal --- */
+.tree-backdrop {
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.tree-modal {
+  width: min(980px, 96vw);
+  height: min(700px, 92vh);
+  display: flex;
+}
+
+/* --- intro story --- */
+.intro-backdrop {
+  background: rgba(8, 12, 24, 0.82);
+}
+.intro {
+  background: linear-gradient(180deg, #1a2740, #0e1626);
+  color: #e2e8f0;
+  border-radius: 18px;
+  padding: 28px 30px 24px;
+  max-width: 540px;
+  width: calc(100% - 40px);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+  text-align: center;
+  border: 1px solid #2d3e5e;
+}
+.intro-stage {
+  height: 190px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.shadow-figure {
+  filter: drop-shadow(0 0 18px rgba(80, 130, 220, 0.55));
+  animation: hover 2.4s ease-in-out infinite;
+}
+@keyframes hover {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+.intro-text {
+  font-size: 16.5px;
+  line-height: 1.6;
+  min-height: 118px;
+  color: #cbd5e0;
+}
+.intro-dots {
+  display: flex;
+  gap: 7px;
+  justify-content: center;
+  margin: 8px 0 16px;
+}
+.intro-dots .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #3d4f70;
+}
+.intro-dots .dot.on {
+  background: #f6ad55;
+}
+.intro-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.intro-skip {
+  background: none;
+  border: none;
+  color: #7c8aa5;
+  font-weight: 600;
+  cursor: pointer;
+}
+.intro-skip:hover {
+  color: #cbd5e0;
+}
+.intro-next {
+  font-size: 17px;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(180deg, #f6ad55, #dd6b20);
+  border: none;
+  border-radius: 12px;
+  padding: 11px 28px;
+  cursor: pointer;
 }
