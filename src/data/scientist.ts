@@ -1,234 +1,244 @@
-import type { GameObjectDef, TreeNode, TreeEdge } from './types';
+import type { GameObjectDef, BuildSlot } from './types';
+
+// Character art (composited onto the procedural walker when equipped).
+import shoe0 from '../assets/char/shoe0.svg';
+import shoe1 from '../assets/char/shoe1.svg';
+import shoe2 from '../assets/char/shoe2.svg';
+import torso0 from '../assets/char/torso0.svg';
+import torso1 from '../assets/char/torso1.svg';
+import torso2 from '../assets/char/torso2.svg';
+import goggles from '../assets/char/goggles.svg';
+import helmet from '../assets/char/helmet.svg';
+import backpack from '../assets/char/backpack.svg';
+// Board-only icons.
+import iconDumbbell from '../assets/icons/dumbbell.svg';
+import iconClipboard from '../assets/icons/clipboard.svg';
+import iconBattery from '../assets/icons/battery.svg';
+import iconNone from '../assets/icons/none.svg';
 
 // ---------------------------------------------------------------------------
-// THE SCIENTIST — the very first object: a researcher on foot.
+// THE SCIENTIST — the first object: a researcher on foot, building a loadout.
 // ---------------------------------------------------------------------------
-// The game opens with a lab scientist jogging across a rough field, cheered on
-// by colleagues and funded by a shadowy backer who just wants them to "go
-// fast". No vehicle yet — locomotion is pure legwork governed by energy.
-//
-// Tree themes (all DATA — adding nodes never touches sim or UI):
-//   • Stride     — walk/run force and speed ceiling
-//   • Endurance  — the energy reserve (how long a run lasts)
-//   • Technique  — the stamina burst pool and its refill
-//   • Groundwork — terrain & drag (rolling/air resistance)
-//   • Specialities (pick ONE) — Exosuit (assist), Olympian (speed),
-//     Ultramarathoner (endurance).
-//
-// EXTENSION POINT: the BICYCLE is a much-later main object (its own data file
-// with 'layers' renderKind + spinning-wheel art). Relativistic regimes come
-// later still as new stats/objects. None of that changes this file.
+// Unlock costs scale steeply (you can't max the board in one run). Equip costs
+// reserve secondary currencies, so your build is constrained by how you play.
+// EXTENSION POINT: more slots/upgrades = more data here; the bicycle is a new
+// data file entirely.
 // ---------------------------------------------------------------------------
 
-const nodes: TreeNode[] = [
+const slots: BuildSlot[] = [
   {
-    id: 'root',
-    kind: 'root',
-    name: 'Scientist',
-    desc: 'On foot, on a rough field, with a backer yelling "GO FAST". Everything starts here.',
-    pos: { x: 0, y: 0 },
-    cost: {},
-    mods: [],
-  },
-
-  // --- STRIDE (right) — force & speed ---
-  {
-    id: 'str1',
-    kind: 'minor',
-    name: 'Determined Stride',
-    desc: 'Push off harder with every step.',
-    pos: { x: 1, y: 0.25 },
-    cost: { grants: 40 },
-    mods: [{ stat: 'walkPower', add: 25 }],
-  },
-  {
-    id: 'str2',
-    kind: 'minor',
-    name: 'Power Walk',
-    desc: 'More force when you exert yourself.',
-    pos: { x: 2, y: 0.35 },
-    cost: { grants: 95, pace: 12 },
-    mods: [{ stat: 'runPower', add: 45 }],
-  },
-  {
-    id: 'strN',
-    kind: 'notable',
-    name: "Sprinter's Form",
-    desc: 'Explosive running and a higher speed ceiling.',
-    pos: { x: 3, y: 0.15 },
-    cost: { grants: 220, kinetic: 30 },
-    mods: [
-      { stat: 'runPower', add: 90 },
-      { stat: 'topSpeed', add: 1.5 },
-    ],
-  },
-
-  // --- ENDURANCE (up) — energy reserve ---
-  {
-    id: 'end1',
-    kind: 'minor',
-    name: 'Hearty Breakfast',
-    desc: 'Start each run with more energy.',
-    pos: { x: 0.25, y: -1 },
-    cost: { grants: 45 },
-    mods: [{ stat: 'maxReserve', add: 25 }],
-  },
-  {
-    id: 'end2',
-    kind: 'minor',
-    name: 'Efficient Metabolism',
-    desc: 'Burn energy more slowly.',
-    pos: { x: 0.35, y: -2 },
-    cost: { grants: 95, pace: 12 },
-    mods: [{ stat: 'energyBurn', mul: 0.85 }],
-  },
-  {
-    id: 'endN',
-    kind: 'notable',
-    name: 'Marathoner',
-    desc: 'A deep tank and steady recovery.',
-    pos: { x: 0.15, y: -3 },
-    cost: { grants: 220, pace: 30 },
-    mods: [
-      { stat: 'maxReserve', add: 50 },
-      { stat: 'staminaRefill', add: 5 },
-    ],
-  },
-
-  // --- TECHNIQUE (left) — stamina pool ---
-  {
-    id: 'tec1',
-    kind: 'minor',
-    name: 'Steady Breathing',
-    desc: 'A bigger burst-stamina pool.',
-    pos: { x: -1, y: 0.25 },
-    cost: { grants: 45 },
-    mods: [{ stat: 'maxStamina', add: 30 }],
-  },
-  {
-    id: 'tec2',
-    kind: 'minor',
-    name: 'Second Wind',
-    desc: 'Recover faster, tire slower.',
-    pos: { x: -2, y: 0.35 },
-    cost: { grants: 100, kinetic: 12 },
-    mods: [
-      { stat: 'staminaRefill', add: 5 },
-      { stat: 'runDrain', add: -3 },
+    id: 'footwear',
+    name: 'Footwear',
+    icon: shoe1,
+    z: 0,
+    upgrades: [
+      {
+        id: 'shoe_worn',
+        name: 'Worn Sneakers',
+        desc: 'Whatever was in the lab lost-and-found.',
+        tier: 1,
+        icon: shoe0,
+        unlockCost: {},
+        equipCost: {},
+        mods: [],
+        art: { layer: 'shoe', svg: shoe0 },
+      },
+      {
+        id: 'shoe_running',
+        name: 'Running Shoes',
+        desc: 'Proper grip and a lighter step.',
+        tier: 2,
+        icon: shoe1,
+        unlockCost: { grants: 150 },
+        equipCost: { pace: 30 },
+        mods: [
+          { stat: 'rollResist', add: -0.2 },
+          { stat: 'topSpeed', add: 1 },
+        ],
+        art: { layer: 'shoe', svg: shoe1 },
+      },
+      {
+        id: 'shoe_spikes',
+        name: 'Track Spikes',
+        desc: 'Bite into the dirt and launch.',
+        tier: 3,
+        icon: shoe2,
+        unlockCost: { grants: 900 },
+        equipCost: { pace: 70, kinetic: 35 },
+        mods: [
+          { stat: 'rollResist', add: -0.35 },
+          { stat: 'topSpeed', add: 2.5 },
+          { stat: 'runPower', add: 30 },
+        ],
+        art: { layer: 'shoe', svg: shoe2 },
+      },
     ],
   },
   {
-    id: 'tecN',
-    kind: 'notable',
-    name: 'Iron Will',
-    desc: 'Huge stamina and strong recovery.',
-    pos: { x: -3, y: 0.15 },
-    cost: { grants: 230, kinetic: 30 },
-    mods: [
-      { stat: 'maxStamina', add: 60 },
-      { stat: 'staminaRefill', add: 7 },
-    ],
-  },
-
-  // --- GROUNDWORK (down) — terrain & drag ---
-  {
-    id: 'grd1',
-    kind: 'minor',
-    name: 'Better Shoes',
-    desc: 'Less rolling resistance on rough ground.',
-    pos: { x: 0.25, y: 1 },
-    cost: { grants: 55 },
-    mods: [{ stat: 'rollResist', add: -0.25 }],
-  },
-  {
-    id: 'grd2',
-    kind: 'minor',
-    name: 'Smoother Path',
-    desc: 'Grade the field — less resistance, less drag.',
-    pos: { x: 0.35, y: 2 },
-    cost: { grants: 120, momentum: 18 },
-    mods: [
-      { stat: 'rollResist', add: -0.3 },
-      { stat: 'drag', add: -0.02 },
-    ],
-  },
-  {
-    id: 'grdN',
-    kind: 'notable',
-    name: 'Aerodynamic Lean',
-    desc: 'Cut the air and pick up speed.',
-    pos: { x: 0.15, y: 3 },
-    cost: { grants: 260, momentum: 22, kinetic: 20 },
-    mods: [
-      { stat: 'drag', mul: 0.78 },
-      { stat: 'topSpeed', add: 2 },
-    ],
-  },
-
-  // --- SPECIALITIES (choose ONE) ---
-  {
-    id: 'spec_exosuit',
-    kind: 'speciality',
-    name: 'Lab-Funded Exosuit',
-    desc: 'SPECIALITY — a powered exosuit adds passive force from your energy reserve, so even idle runs go far. Heavier, but tireless.',
-    pos: { x: 2.7, y: 2.6 },
-    cost: { grants: 420, pace: 50, momentum: 40 },
-    mods: [
-      { stat: 'assist', add: 70 },
-      { stat: 'walkPower', add: 20 },
-      { stat: 'weight', add: 16 },
+    id: 'bodywear',
+    name: 'Bodywear',
+    icon: torso1,
+    z: 2,
+    upgrades: [
+      {
+        id: 'body_coat',
+        name: 'Lab Coat',
+        desc: 'Standard issue. Flaps dramatically.',
+        tier: 1,
+        icon: torso0,
+        unlockCost: {},
+        equipCost: {},
+        mods: [],
+        art: { layer: 'torso', svg: torso0 },
+      },
+      {
+        id: 'body_jacket',
+        name: 'Track Jacket',
+        desc: 'Cuts the breeze a little.',
+        tier: 2,
+        icon: torso1,
+        unlockCost: { grants: 200 },
+        equipCost: { pace: 40 },
+        mods: [{ stat: 'drag', add: -0.03 }],
+        art: { layer: 'torso', svg: torso1 },
+      },
+      {
+        id: 'body_skinsuit',
+        name: 'Aero Skinsuit',
+        desc: 'Slippery, light, slightly ridiculous.',
+        tier: 3,
+        icon: torso2,
+        unlockCost: { grants: 1100 },
+        equipCost: { kinetic: 70 },
+        mods: [
+          { stat: 'drag', mul: 0.7 },
+          { stat: 'weight', add: -4 },
+        ],
+        art: { layer: 'torso', svg: torso2 },
+      },
     ],
   },
   {
-    id: 'spec_olympian',
-    kind: 'speciality',
-    name: 'Olympic Runner',
-    desc: 'SPECIALITY — all-out speed. Huge running power and ceiling, but a smaller energy reserve. Rewards aggressive active sprints.',
-    pos: { x: -3.2, y: -0.9 },
-    cost: { grants: 420, kinetic: 90 },
-    mods: [
-      { stat: 'runPower', add: 140 },
-      { stat: 'topSpeed', add: 4 },
-      { stat: 'maxReserve', add: -20 },
+    id: 'headgear',
+    name: 'Headgear',
+    icon: helmet,
+    z: 4,
+    upgrades: [
+      {
+        id: 'head_none',
+        name: 'Bare Head',
+        desc: 'Wind in the hair.',
+        tier: 1,
+        icon: iconNone,
+        unlockCost: {},
+        equipCost: {},
+        mods: [],
+      },
+      {
+        id: 'head_goggles',
+        name: 'Lab Goggles',
+        desc: 'Focus and a touch less drag.',
+        tier: 2,
+        icon: goggles,
+        unlockCost: { grants: 130 },
+        equipCost: { pace: 20 },
+        mods: [
+          { stat: 'drag', add: -0.01 },
+          { stat: 'staminaRefill', add: 3 },
+        ],
+        art: { layer: 'headgear', svg: goggles },
+      },
+      {
+        id: 'head_helmet',
+        name: 'Aero Helmet',
+        desc: 'A teardrop for your skull.',
+        tier: 3,
+        icon: helmet,
+        unlockCost: { grants: 950 },
+        equipCost: { kinetic: 55 },
+        mods: [
+          { stat: 'drag', add: -0.04 },
+          { stat: 'topSpeed', add: 1 },
+        ],
+        art: { layer: 'headgear', svg: helmet },
+      },
     ],
   },
   {
-    id: 'spec_ultra',
-    kind: 'speciality',
-    name: 'Ultramarathoner',
-    desc: 'SPECIALITY — built to go forever. Enormous reserve and recovery for very long runs.',
-    pos: { x: 0.15, y: -4 },
-    cost: { grants: 420, pace: 90 },
-    mods: [
-      { stat: 'maxReserve', add: 120 },
-      { stat: 'staminaRefill', add: 10 },
-      { stat: 'energyBurn', mul: 0.9 },
+    id: 'conditioning',
+    name: 'Conditioning',
+    icon: iconDumbbell,
+    z: 99, // no character art
+    upgrades: [
+      {
+        id: 'cond_base',
+        name: 'Casual Jogger',
+        desc: 'You run sometimes. On weekends.',
+        tier: 1,
+        icon: iconClipboard,
+        unlockCost: {},
+        equipCost: {},
+        mods: [],
+      },
+      {
+        id: 'cond_interval',
+        name: 'Interval Training',
+        desc: 'A bigger gas tank.',
+        tier: 2,
+        icon: iconDumbbell,
+        unlockCost: { grants: 180 },
+        equipCost: { momentum: 25 },
+        mods: [{ stat: 'maxReserve', add: 45 }],
+      },
+      {
+        id: 'cond_coach',
+        name: 'Pro Coaching',
+        desc: 'A deep tank and efficient form.',
+        tier: 3,
+        icon: iconClipboard,
+        unlockCost: { grants: 1000 },
+        equipCost: { pace: 40, momentum: 40 },
+        mods: [
+          { stat: 'maxReserve', add: 90 },
+          { stat: 'staminaRefill', add: 6 },
+          { stat: 'runDrain', add: -3 },
+        ],
+      },
     ],
   },
-];
-
-const edges: TreeEdge[] = [
-  { a: 'root', b: 'str1' },
-  { a: 'str1', b: 'str2' },
-  { a: 'str2', b: 'strN' },
-  { a: 'root', b: 'end1' },
-  { a: 'end1', b: 'end2' },
-  { a: 'end2', b: 'endN' },
-  { a: 'root', b: 'tec1' },
-  { a: 'tec1', b: 'tec2' },
-  { a: 'tec2', b: 'tecN' },
-  { a: 'root', b: 'grd1' },
-  { a: 'grd1', b: 'grd2' },
-  { a: 'grd2', b: 'grdN' },
-  // cross-links (alternate routes)
-  { a: 'str1', b: 'grd1' },
-  { a: 'tec1', b: 'end1' },
-  { a: 'str2', b: 'grd2' },
-  // speciality approaches
-  { a: 'strN', b: 'spec_exosuit' },
-  { a: 'grdN', b: 'spec_exosuit' },
-  { a: 'tecN', b: 'spec_olympian' },
-  { a: 'endN', b: 'spec_ultra' },
+  {
+    id: 'power',
+    name: 'Power Source',
+    icon: iconBattery,
+    z: 1, // backpack behind torso
+    upgrades: [
+      {
+        id: 'power_none',
+        name: 'None',
+        desc: 'Just muscle and willpower.',
+        tier: 1,
+        icon: iconNone,
+        unlockCost: {},
+        equipCost: {},
+        mods: [],
+      },
+      {
+        id: 'power_exosuit',
+        name: 'Lab-Funded Exosuit',
+        desc: 'An externally-powered exosuit adds passive force from the reserve — even idle runs go far. Heavy, expensive, tireless.',
+        tier: 2,
+        icon: iconBattery,
+        unlockCost: { grants: 3500 },
+        equipCost: { pace: 110, kinetic: 80, momentum: 80 },
+        mods: [
+          { stat: 'assist', add: 90 },
+          { stat: 'walkPower', add: 25 },
+          { stat: 'weight', add: 18 },
+        ],
+        art: { layer: 'back', svg: backpack },
+      },
+    ],
+  },
 ];
 
 export const scientist: GameObjectDef = {
@@ -249,6 +259,5 @@ export const scientist: GameObjectDef = {
     topSpeed: 12,
     assist: 0,
   },
-  slots: [],
-  tree: { rootId: 'root', nodes, edges },
+  slots,
 };

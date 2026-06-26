@@ -26,13 +26,12 @@ export function getObject(id: string): GameObjectDef {
 
 export type {
   GameObjectDef,
-  SlotDef,
-  TreeNode,
-  TreeEdge,
-  PassiveTree,
+  BuildSlot,
+  Upgrade,
+  UpgradeArt,
+  Cost,
   StatKey,
   StatMod,
   CurrencyId,
-  NodeKind,
   RenderKind,
 } from './types';

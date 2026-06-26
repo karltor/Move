@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 26" width="32" height="26">
+  <!-- aero helmet -->
+  <path d="M4 16 Q4 3 16 3 Q29 3 29 14 L31 16 Q24 19 16 19 Q9 19 4 16 Z" fill="#6b46c1"/>
+  <path d="M7 13 Q7 6 16 6 Q25 6 25 13" fill="none" stroke="#9f7aea" stroke-width="2"/>
+  <path d="M11 16 Q16 14 25 15" stroke="#44337a" stroke-width="1.5" fill="none"/>
+</svg>

@@ -12,12 +12,13 @@ export function RideBars({ state, stats }: Props) {
   const staminaPct = (stamina / Math.max(1, stats.maxStamina)) * 100;
   const reserve = state ? state.reserve : stats.maxReserve;
   const reservePct = (reserve / Math.max(1, stats.maxReserve)) * 100;
-  const speedKmh = state ? state.v * 3.6 : 0;
+  const speed = state ? state.v : 0;
 
   return (
     <div className="ridebars">
       <div className="ridebars-top">
-        <span className="ride-speed">{Math.round(speedKmh)} km/h</span>
+        <span className="ride-speed">{speed.toFixed(1)}</span>
+        <span className="ride-speed-unit">m/s</span>
       </div>
 
       <div className="bar">

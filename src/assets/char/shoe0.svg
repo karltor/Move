@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 22 12" width="22" height="12">
+  <!-- worn sneaker -->
+  <path d="M2 9 L2 5 Q3 3 6 3 L13 6 Q19 7 20 9 L20 10 Q20 11 19 11 L3 11 Q2 11 2 9 Z" fill="#6b7280"/>
+  <path d="M2 11 L20 11 L20 12 L2 12 Z" fill="#374151"/>
+  <path d="M6 4 L10 5.5" stroke="#9ca3af" stroke-width="1"/>
+</svg>
