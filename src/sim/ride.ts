@@ -2,18 +2,20 @@ import type { StatKey } from '../data/types';
 import type { RunMetrics } from '../data/currencies';
 
 // ---------------------------------------------------------------------------
-// PURE RIDE SIMULATION
+// PURE LOCOMOTION SIMULATION
 // ---------------------------------------------------------------------------
-// The ride is a stamina-governed journey: pedalling applies force and drains
-// stamina; coasting recovers it; drag and rolling resistance always slow you.
-// A run lasts `runTime` seconds and you maximise distance.
+// A run is bounded by ENERGY, not a timer. Two pools model real physiology:
+//   • reserve  — total energy for the run. Only ever depletes (resets each
+//                run). Locomotion burns it; when it's empty you can't move and
+//                coast to a stop, which ENDS the run.
+//   • stamina  — a fast burst pool. Exerting (holding) spends it for extra
+//                force; easing off refills it FROM the reserve. This is the
+//                "active spend / active refill" loop — pace it well to go far.
 //
-// `rideStep` is a PURE function of (state, stats, pedal, dt) — no rendering,
-// no globals, no randomness. It is used in two ways:
-//   • real-time, frame by frame, with the player's hold input (active play),
-//   • headlessly via `simulateRide` with a policy (idle auto-run, offline
-//     catch-up, and unit tests).
-// Every future object reuses the exact same physics.
+// `rideStep` is a PURE function of (state, stats, exert, dt): no rendering, no
+// globals, no randomness. The real-time canvas, the idle auto-pilot, offline
+// catch-up and the unit tests all share it. Every future object (the bicycle,
+// and one day relativistic regimes) reuses the same physics.
 // ---------------------------------------------------------------------------
 
 export type RideStats = Record<StatKey, number>;
@@ -21,16 +23,16 @@ export type RideStats = Record<StatKey, number>;
 export interface RideState {
   t: number; // elapsed seconds
   x: number; // distance travelled
-  v: number; // current speed (m/s)
-  stamina: number; // remaining leg stamina
-  battery: number; // remaining battery charge (0 if no battery)
-  maxSpeed: number; // peak speed reached so far
+  v: number; // speed (m/s)
+  stamina: number; // fast burst pool
+  reserve: number; // total energy left this run
+  maxSpeed: number; // peak speed reached
 }
 
 export const DT = 1 / 60;
-
-const BATTERY_DRAIN = 14; // charge/sec while assisting
-const BATTERY_REGEN = 9; // charge/sec recovered while coasting
+export const STOP_SPEED = 0.3; // below this (with no reserve) the run ends
+const MAX_SECONDS = 150; // hard safety cap
+const RUN_BURN_MULT = 1.7; // exerting burns reserve faster than walking
 
 export function initRideState(stats: RideStats): RideState {
   return {
@@ -38,51 +40,64 @@ export function initRideState(stats: RideStats): RideState {
     x: 0,
     v: 0,
     stamina: stats.maxStamina,
-    battery: stats.battery, // start full
+    reserve: stats.maxReserve,
     maxSpeed: 0,
   };
 }
 
-/** Advance the ride one step. Pure: returns a new state, never mutates input. */
+/** True once the object is spent and stopped — the run is over. */
+export function isFinished(state: RideState): boolean {
+  return (state.reserve <= 0 && state.v < STOP_SPEED) || state.t >= MAX_SECONDS;
+}
+
+/** Advance one step. Pure: returns a new state, never mutates the input. */
 export function rideStep(
   state: RideState,
   stats: RideStats,
-  pedal: boolean,
+  exert: boolean,
   dt: number = DT,
 ): RideState {
   const mass = Math.max(20, stats.weight);
-  const topSpeed = Math.max(1, stats.topSpeed);
+  const top = Math.max(1, stats.topSpeed);
+  const speedFactor = Math.max(0, 1 - state.v / top); // force fades near top
 
-  // Pedal force fades to zero as you approach the soft speed cap.
-  const speedFactor = Math.max(0, 1 - state.v / topSpeed);
-
-  let force = 0;
+  let reserve = state.reserve;
   let stamina = state.stamina;
-  let battery = state.battery;
-  let legsPedalling = false;
+  let force = 0;
 
-  if (pedal && stamina > 0) {
-    force += stats.pedalPower * speedFactor;
-    stamina -= stats.staminaDrain * dt;
-    legsPedalling = true;
+  // Base locomotion (walking) — always on while there's energy, no stamina.
+  if (reserve > 0) {
+    force += stats.walkPower * speedFactor;
+    reserve -= stats.energyBurn * dt;
   }
 
-  // Battery Management System (Electrified speciality): a battery passively
-  // assists every stroke and recharges while coasting — keeps idle runs going.
-  const hasBattery = stats.battery > 0;
-  let batteryAssisting = false;
-  if (hasBattery && battery > 0) {
-    force += stats.pedalPower * 0.45 * speedFactor;
-    battery -= BATTERY_DRAIN * dt;
-    batteryAssisting = true;
+  // Exertion (running / sprinting) — extra force, spends stamina + reserve.
+  let exerting = false;
+  if (exert && stamina > 0 && reserve > 0) {
+    force += stats.runPower * speedFactor;
+    stamina -= stats.runDrain * dt;
+    reserve -= stats.energyBurn * (RUN_BURN_MULT - 1) * dt;
+    exerting = true;
   }
 
-  // Recovery when the relevant source isn't being used this step.
-  if (!legsPedalling) stamina += stats.staminaRegen * dt;
-  if (hasBattery && !batteryAssisting) battery += BATTERY_REGEN * dt;
+  // Assist (e.g. the Exosuit speciality): externally-powered passive force —
+  // it costs no body energy, so it helps even idle runs go further. It still
+  // only applies while the run is alive (reserve > 0 keeps you moving).
+  if (stats.assist > 0 && reserve > 0) {
+    force += stats.assist * speedFactor;
+  }
+
+  // Easing off refills the burst pool from the reserve.
+  if (!exerting && reserve > 0) {
+    const amt = Math.min(stats.staminaRefill * dt, reserve, stats.maxStamina - stamina);
+    if (amt > 0) {
+      stamina += amt;
+      reserve -= amt;
+    }
+  }
 
   stamina = clamp(stamina, 0, stats.maxStamina);
-  battery = clamp(battery, 0, stats.battery);
+  reserve = Math.max(0, reserve);
 
   const dragAccel = (stats.drag * state.v * state.v) / mass;
   const rollAccel = state.v > 0.02 ? stats.rollResist : 0;
@@ -96,35 +111,35 @@ export function rideStep(
     x,
     v,
     stamina,
-    battery,
+    reserve,
     maxSpeed: Math.max(state.maxSpeed, v),
   };
 }
 
-/** Compute the metrics a finished run scored. */
+/** Metrics a finished run scored, including physics quantities. */
 export function metricsFor(stats: RideStats, final: RideState): RunMetrics {
+  const mass = Math.max(20, stats.weight);
   const duration = Math.max(0.001, final.t);
   return {
     distance: final.x,
     duration,
     avgSpeed: final.x / duration,
     maxSpeed: final.maxSpeed,
-    peakMomentum: Math.max(20, stats.weight) * final.maxSpeed,
-    mass: Math.max(20, stats.weight),
+    peakMomentum: mass * final.maxSpeed,
+    peakKE: 0.5 * mass * final.maxSpeed * final.maxSpeed,
+    mass,
   };
 }
 
-/** A pedalling policy: decide whether to pedal given the current state. */
+/** A policy: decide whether to exert given the current state. */
 export type RidePolicy = (state: RideState, stats: RideStats) => boolean;
 
-/** Conservative auto-pilot used for idle/offline runs: pedal while there's
- *  comfortable stamina, ease off to let it recover. A skilled human pacing
- *  manually can do meaningfully better — that's the active-play reward. */
+/** Conservative idle auto-pilot: exert while there's comfortable stamina and
+ *  energy. A present, well-pacing human out-earns it via the active bonus. */
 export const autoPilot: RidePolicy = (s, stats) =>
-  s.stamina > stats.maxStamina * 0.25;
+  s.stamina > stats.maxStamina * 0.3 && s.reserve > 0;
 
-/** Run a full headless ride to completion under `policy`. Returns the metrics,
- *  a sampled trajectory for any animation, and the final state. */
+/** Run a full headless ride to completion under `policy`. */
 export function simulateRide(
   stats: RideStats,
   policy: RidePolicy = autoPilot,
@@ -132,11 +147,12 @@ export function simulateRide(
 ): { metrics: RunMetrics; trajectory: { x: number; y: number }[]; final: RideState } {
   let s = initRideState(stats);
   const trajectory: { x: number; y: number }[] = [{ x: 0, y: 0 }];
-  const steps = Math.ceil(stats.runTime / dt);
-  for (let i = 0; i < steps; i++) {
-    const pedal = policy(s, stats);
-    s = rideStep(s, stats, pedal, dt);
+  let i = 0;
+  const maxSteps = Math.ceil(MAX_SECONDS / dt);
+  while (!isFinished(s) && i < maxSteps) {
+    s = rideStep(s, stats, policy(s, stats), dt);
     if (i % 4 === 0) trajectory.push({ x: s.x, y: 0 });
+    i++;
   }
   trajectory.push({ x: s.x, y: 0 });
   return { metrics: metricsFor(stats, s), trajectory, final: s };

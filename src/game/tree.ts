@@ -113,13 +113,18 @@ export function aggregateStats(
   }
 
   // Sanity clamps so wild builds never break the sim.
+  stats.walkPower = Math.max(0, stats.walkPower);
+  stats.runPower = Math.max(0, stats.runPower);
   stats.maxStamina = Math.max(10, stats.maxStamina);
+  stats.staminaRefill = Math.max(0, stats.staminaRefill);
+  stats.runDrain = Math.max(1, stats.runDrain);
+  stats.maxReserve = Math.max(30, stats.maxReserve);
+  stats.energyBurn = Math.max(0.5, stats.energyBurn);
   stats.weight = Math.max(20, stats.weight);
   stats.drag = Math.max(0.02, stats.drag);
   stats.rollResist = Math.max(0, stats.rollResist);
   stats.topSpeed = Math.max(2, stats.topSpeed);
-  stats.runTime = Math.max(5, stats.runTime);
-  stats.battery = Math.max(0, stats.battery);
+  stats.assist = Math.max(0, stats.assist);
   return stats;
 }
 

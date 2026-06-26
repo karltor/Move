@@ -1,17 +1,16 @@
 import type { CurrencyId } from './types';
 
 // ---------------------------------------------------------------------------
-// CURRENCIES — derived from a run's METRICS, not handed out flatly.
+// CURRENCIES — derived from a run's METRICS, themed to the story + real physics
 // ---------------------------------------------------------------------------
-// Each currency rewards a different way of playing, so upgrades can cost a mix
-// and every play-style stays relevant. `momentum` is log-scaled on purpose:
-// future objects (a particle accelerator: tiny mass, enormous velocity; a
-// train: huge mass, modest velocity) would otherwise either trivialise or
-// be worthless. Log keeps the numbers comparable across wildly different
-// objects.
+// A shadowy backer funds the lab to "go fast", so the headline currency is
+// Grants. The rest are physics quantities, so they stay meaningful as the game
+// scales from a walking scientist to a bicycle to (one day) relativistic
+// regimes. Kinetic energy and momentum are LOG-scaled so a future heavy/fast
+// object neither trivialises nor wastes them.
 //
-// EXTENSION POINT: add a currency by adding an id to `CurrencyId` and an entry
-// here. Tree-node costs, the HUD and the store all iterate this list.
+// EXTENSION POINT: add a currency by adding an id to `CurrencyId` + an entry
+// here. The HUD, store and tree-costs all iterate this list.
 // ---------------------------------------------------------------------------
 
 /** The measurable outcome of a single run. */
@@ -20,7 +19,8 @@ export interface RunMetrics {
   duration: number; // seconds
   avgSpeed: number; // m/s
   maxSpeed: number; // m/s
-  peakMomentum: number; // mass * maxSpeed (raw, pre-scaling)
+  peakMomentum: number; // mass * maxSpeed (raw)
+  peakKE: number; // 0.5 * mass * maxSpeed^2 (raw)
   mass: number;
 }
 
@@ -30,41 +30,40 @@ export interface CurrencyDef {
   symbol: string;
   color: string;
   blurb: string;
-  /** How much of this currency a run awards, given its metrics. */
   award: (m: RunMetrics) => number;
 }
 
 export const CURRENCIES: CurrencyDef[] = [
   {
-    id: 'coins',
-    name: 'Coins',
-    symbol: '🪙',
-    color: '#d69e2e',
-    blurb: 'Earned from raw distance. The everyday upgrade currency.',
+    id: 'grants',
+    name: 'Grants',
+    symbol: '💰',
+    color: '#38a169',
+    blurb: 'Funding from your backer for the distance you cover. Spend it freely.',
     award: (m) => Math.floor(m.distance),
   },
   {
-    id: 'tempo',
-    name: 'Tempo',
-    symbol: '⏱️',
+    id: 'pace',
+    name: 'Pace',
+    symbol: '🏃',
     color: '#3182ce',
-    blurb: 'Earned from your average speed — rewards sustained pace.',
+    blurb: 'Earned from your average speed — rewards keeping momentum up.',
     award: (m) => Math.floor(m.avgSpeed * 6),
   },
   {
-    id: 'rush',
-    name: 'Rush',
+    id: 'kinetic',
+    name: 'Kinetic Energy',
     symbol: '⚡',
     color: '#9f7aea',
-    blurb: 'Earned from your top speed — rewards going fast at all.',
-    award: (m) => Math.floor(m.maxSpeed * 4),
+    blurb: '½·m·v² at peak speed, log-scaled. The physicist’s favourite.',
+    award: (m) => Math.floor(10 * Math.log2(1 + m.peakKE / 200)),
   },
   {
     id: 'momentum',
     name: 'Momentum',
     symbol: '🌀',
     color: '#dd6b20',
-    blurb: 'Mass × top speed, log-scaled so every object stays relevant.',
+    blurb: 'm·v at peak speed, log-scaled so every object stays relevant.',
     award: (m) => Math.floor(12 * Math.log2(1 + m.peakMomentum / 60)),
   },
 ];
@@ -77,14 +76,12 @@ export function getCurrency(id: CurrencyId): CurrencyDef {
   return c;
 }
 
-/** Award every currency for a run's metrics. */
 export function awardsFor(m: RunMetrics): Record<CurrencyId, number> {
   const out = {} as Record<CurrencyId, number>;
   for (const c of CURRENCIES) out[c.id] = Math.max(0, c.award(m));
   return out;
 }
 
-/** An empty currency wallet. */
 export function emptyWallet(): Record<CurrencyId, number> {
   const out = {} as Record<CurrencyId, number>;
   for (const c of CURRENCIES) out[c.id] = 0;
