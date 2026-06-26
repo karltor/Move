@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 22 12" width="22" height="12">
+  <!-- track spikes -->
+  <path d="M2 8 L2 4 Q3 1 8 1 L15 5 Q21 6 21 9 Q21 10 20 10 L3 10 Q2 10 2 8 Z" fill="#dd6b20"/>
+  <path d="M3 10 L20 10 L20 11 L3 11 Z" fill="#1a202c"/>
+  <path d="M5 11 L5 12 M9 11 L9 12 M13 11 L13 12 M17 11 L17 12" stroke="#1a202c" stroke-width="1.2"/>
+  <path d="M6 2.5 L12 5.5" stroke="#fffaf0" stroke-width="1.2"/>
+</svg>

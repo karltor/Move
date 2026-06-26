@@ -1,14 +1,15 @@
 import { CURRENCIES } from '../data/currencies';
-import type { Wallet } from '../game/tree';
+import type { Wallet } from '../game/builds';
 
 interface Props {
   wallet: Wallet;
+  reserved: Wallet;
   bestDistance: number;
   runCount: number;
   liveDistance: number;
 }
 
-export function Hud({ wallet, bestDistance, runCount, liveDistance }: Props) {
+export function Hud({ wallet, reserved, bestDistance, runCount, liveDistance }: Props) {
   return (
     <div className="hud">
       <div className="hud-distance">
@@ -17,14 +18,20 @@ export function Hud({ wallet, bestDistance, runCount, liveDistance }: Props) {
       </div>
 
       <div className="hud-currencies">
-        {CURRENCIES.map((c) => (
-          <div className="hud-cur" key={c.id} title={`${c.name} — ${c.blurb}`}>
-            <span className="hud-cur-sym">{c.symbol}</span>
-            <span className="hud-cur-val" style={{ color: c.color }}>
-              {Math.floor(wallet[c.id] ?? 0)}
-            </span>
-          </div>
-        ))}
+        {CURRENCIES.map((c) => {
+          const total = Math.floor(wallet[c.id] ?? 0);
+          const res = Math.floor(reserved[c.id] ?? 0);
+          const avail = total - res;
+          return (
+            <div className="hud-cur" key={c.id} title={`${c.name} — ${c.blurb}`}>
+              <span className="hud-cur-sym">{c.symbol}</span>
+              <span className="hud-cur-val" style={{ color: c.color }}>
+                {c.id === 'grants' ? total : avail}
+              </span>
+              {c.id !== 'grants' && res > 0 && <span className="hud-cur-res">🔒{res}</span>}
+            </div>
+          );
+        })}
       </div>
 
       <div className="hud-stats">

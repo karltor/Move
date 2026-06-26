@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 46 60" width="46" height="60">
+  <!-- aero skinsuit -->
+  <path d="M11 8 Q23 2 35 8 L38 54 Q23 59 8 54 Z" fill="#0d9488"/>
+  <path d="M11 8 Q23 2 35 8 L33 30 Q23 34 13 30 Z" fill="#14b8a6"/>
+  <path d="M23 6 L23 57" stroke="#0b7c72" stroke-width="1.5"/>
+  <path d="M16 34 L18 54 M30 34 L28 54" stroke="#5eead4" stroke-width="1.6"/>
+  <path d="M9 22 L37 22" stroke="#0b7c72" stroke-width="1.5"/>
+</svg>

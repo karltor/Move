@@ -1,109 +1,92 @@
 // ---------------------------------------------------------------------------
-// DATA-DRIVEN CONTENT MODEL
+// DATA-DRIVEN BUILD MODEL
 // ---------------------------------------------------------------------------
-// Everything about a launchable object — its base stats, its passive skill
-// tree (Path-of-Exile-style graph of nodes), the art layers, and which stats
-// each node grants — is expressed as data using the types below. The
-// simulation (`src/sim`), stat aggregation (`src/game`) and UI (`src/ui`)
-// consume these generically and contain NO object-specific logic.
+// This is a BUILD game, not a node-buster. Content is data:
+//   • An object has SLOTS (Footwear, Bodywear, …). Each slot offers several
+//     tiered UPGRADES. You equip ONE upgrade per slot — that loadout is your
+//     "build".
+//   • Grants (the main currency) are SPENT to UNLOCK an upgrade permanently.
+//   • The other currencies (Pace/Kinetic/Momentum) are RESERVED to keep an
+//     upgrade EQUIPPED, and refunded when you unequip — a finite loadout budget
+//     that forces real build choices. Because play-styles earn different
+//     currencies, your build is shaped by how you play.
+//   • Equipping changes STATS and the character's layered SVG ART.
 //
-// EXTENSION POINT: to add a new "main" object later (roller skates, car,
-// train, particle…):
-//   1. create `src/data/<object>.ts` exporting a `GameObjectDef` (its own
-//      tree, including its own speciality keystones),
-//   2. add SVG art under `src/assets/parts/`,
-//   3. register it in `src/data/index.ts`.
-// Main objects are mutually exclusive in-game (you pick one); switching is a
-// respec, handled generically by the store.
+// EXTENSION POINT: a new object (bicycle, …) is a new data file with its own
+// slots/upgrades/art + a renderKind; relativistic regimes add new stats. The
+// sim, store and UI are generic over this model.
 // ---------------------------------------------------------------------------
 
-/** Stats the simulation understands. Add a key here + handle it in
- *  `src/sim/ride.ts` to introduce a new gameplay dimension for every object. */
+/** Stats the simulation understands (see `src/sim/ride.ts`). */
 export type StatKey =
-  | 'walkPower' // base forward force, always on while energy remains (no stamina)
-  | 'runPower' // extra force while exerting (costs stamina)
-  | 'maxStamina' // fast burst pool
-  | 'staminaRefill' // stamina/sec refilled from the reserve while easing off
-  | 'runDrain' // stamina/sec spent while exerting
-  | 'maxReserve' // total energy available for one run
-  | 'energyBurn' // reserve/sec consumed by locomotion (base rate)
-  | 'drag' // quadratic air resistance coefficient (lower = better)
-  | 'weight' // mass (affects accel, momentum/KE currencies, drag damping)
-  | 'rollResist' // constant ground deceleration (lower = better)
-  | 'topSpeed' // soft speed cap; force fades as you approach it
-  | 'assist'; // speciality: passive force from the reserve (0 = none)
+  | 'walkPower'
+  | 'runPower'
+  | 'maxStamina'
+  | 'staminaRefill'
+  | 'runDrain'
+  | 'maxReserve'
+  | 'energyBurn'
+  | 'drag'
+  | 'weight'
+  | 'rollResist'
+  | 'topSpeed'
+  | 'assist';
 
-/** Currencies are derived from a run's metrics (see `src/data/currencies.ts`).
- *  Tree nodes can cost any mix of them. */
+/** Currencies derived from a run's metrics (see `src/data/currencies.ts`). */
 export type CurrencyId = 'grants' | 'pace' | 'kinetic' | 'momentum';
 
-/** A single stat modifier granted by a tree node. `add` is applied in the
- *  additive pass, `mul` in a later multiplicative pass. */
+/** A cost expressed in one or more currencies. */
+export type Cost = Partial<Record<CurrencyId, number>>;
+
 export interface StatMod {
   stat: StatKey;
   add?: number;
   mul?: number;
 }
 
-export type NodeKind =
-  | 'root' // the main vehicle; auto-allocated, exclusive across objects
-  | 'minor' // small stat node
-  | 'notable' // stronger, "intriguing" node
-  | 'speciality'; // keystone — you may allocate only ONE per object
+/** A character art layer this upgrade contributes when equipped. `layer` is a
+ *  renderer-known attachment id (e.g. 'torso', 'shoe', 'headgear', 'back'). */
+export interface UpgradeArt {
+  layer: string;
+  svg: string;
+}
 
-/** A node in the passive tree. */
-export interface TreeNode {
+export interface Upgrade {
   id: string;
-  kind: NodeKind;
   name: string;
   desc: string;
-  /** Layout position in abstract tree units (rendered scaled + pannable). */
-  pos: { x: number; y: number };
-  /** Currency cost to allocate. Empty for the root. */
-  cost: Partial<Record<CurrencyId, number>>;
-  /** Stat modifiers granted while allocated. */
+  /** 1-based tier within its slot. Unlocking tier N requires tier N-1 unlocked. */
+  tier: number;
+  /** Small SVG symbol for the board tile. */
+  icon: string;
+  /** One-time GRANTS (mainly) spend to unlock. Empty = free base tier. */
+  unlockCost: Cost;
+  /** Currencies RESERVED while equipped (refunded on unequip). Empty = free. */
+  equipCost: Cost;
+  /** Stat modifiers applied while equipped. */
   mods: StatMod[];
-  /** Optional: allocating this node swaps a composition art layer. The
-   *  highest `tier` among allocated nodes wins for a given slot. */
-  setArt?: { slot: string; svg: string; tier: number };
+  /** Optional character art shown while equipped. */
+  art?: UpgradeArt;
 }
 
-export interface TreeEdge {
-  a: string;
-  b: string;
-}
-
-/** A default art layer for the object (shown before any art-swapping node). */
-export interface SlotDef {
+export interface BuildSlot {
   id: string;
   name: string;
-  z: number; // draw order (lower = further back)
-  svg: string; // default/tier-0 art
+  /** Small SVG symbol for the slot header. */
+  icon: string;
+  /** Character layer draw order (lower = further back). */
+  z: number;
+  /** Tier-ordered upgrades; the first (tier 1, free) is the default equip. */
+  upgrades: Upgrade[];
 }
 
-export interface PassiveTree {
-  rootId: string;
-  nodes: TreeNode[];
-  edges: TreeEdge[];
-}
-
-/** How the canvas should draw this object.
- *  - 'walker'  : a procedurally-animated person (the scientist on foot).
- *  - 'layers'  : a layered SVG composition (the future bicycle etc.).
- *  EXTENSION POINT: add a renderer kind here + handle it in PixiStage. */
 export type RenderKind = 'walker' | 'layers';
 
-/** A complete launchable object. */
 export interface GameObjectDef {
   id: string;
   name: string;
-  /** Which canvas renderer to use. */
   renderKind: RenderKind;
-  /** Baseline stats before any tree nodes are allocated. */
   baseStats: Record<StatKey, number>;
-  /** Composition layers for 'layers' renderKind; tree `setArt` overrides per
-   *  slot. Empty/omitted for procedural renderers like 'walker'. */
-  slots: SlotDef[];
-  /** The passive skill tree for this object (includes its specialities). */
-  tree: PassiveTree;
+  /** The build board. */
+  slots: BuildSlot[];
 }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getObject } from './data';
 import { useGameStore } from './store/gameStore';
-import { aggregateStats } from './game/tree';
+import { aggregateStats, reservedTotals } from './game/builds';
 import {
   autoPilot,
   metricsFor,
@@ -10,34 +10,43 @@ import {
   type RidePolicy,
 } from './sim/ride';
 import { PixiStage, type StageHandle } from './game/PixiStage';
-import { CURRENCIES, type RunMetrics } from './data/currencies';
+import type { RunMetrics } from './data/currencies';
+import type { CurrencyId } from './data/types';
 import { Hud } from './ui/Hud';
 import { RideBars } from './ui/RideBars';
-import { SkillTree } from './ui/SkillTree';
+import { Board } from './ui/Board';
+import { Results } from './ui/Results';
 import { WelcomeBack } from './ui/WelcomeBack';
 import { Intro } from './ui/Intro';
-import type { CurrencyId } from './data/types';
 import './App.css';
+
+interface ResultState {
+  metrics: RunMetrics;
+  awards: Record<CurrencyId, number>;
+  mult: number;
+}
 
 export default function App() {
   const objectId = useGameStore((s) => s.objectId);
   const wallet = useGameStore((s) => s.wallet);
-  const allocated = useGameStore((s) => s.allocated);
+  const unlocked = useGameStore((s) => s.unlocked);
+  const equipped = useGameStore((s) => s.equipped);
   const bestDistance = useGameStore((s) => s.bestDistance);
   const runCount = useGameStore((s) => s.runCount);
   const autoRun = useGameStore((s) => s.autoRun);
   const pendingOffline = useGameStore((s) => s.pendingOffline);
   const introSeen = useGameStore((s) => s.introSeen);
   const addRunRewards = useGameStore((s) => s.addRunRewards);
-  const allocate = useGameStore((s) => s.allocate);
-  const respec = useGameStore((s) => s.respec);
+  const unlock = useGameStore((s) => s.unlock);
+  const equip = useGameStore((s) => s.equip);
   const setAutoRun = useGameStore((s) => s.setAutoRun);
   const claimOffline = useGameStore((s) => s.claimOffline);
   const touchActive = useGameStore((s) => s.touchActive);
   const setIntroSeen = useGameStore((s) => s.setIntroSeen);
 
   const object = getObject(objectId);
-  const stats = useMemo(() => aggregateStats(object, allocated), [object, allocated]);
+  const stats = useMemo(() => aggregateStats(object, equipped), [object, equipped]);
+  const reserved = useMemo(() => reservedTotals(object, equipped), [object, equipped]);
 
   const stageRef = useRef<StageHandle>(null);
   const heldRef = useRef(false);
@@ -50,12 +59,8 @@ export default function App() {
 
   const [running, setRunning] = useState(false);
   const [live, setLive] = useState<RideState | null>(null);
-  const [treeOpen, setTreeOpen] = useState(false);
-  const [toast, setToast] = useState<{
-    awards: Record<CurrencyId, number>;
-    mult: number;
-    key: number;
-  } | null>(null);
+  const [boardOpen, setBoardOpen] = useState(false);
+  const [results, setResults] = useState<ResultState | null>(null);
 
   const loopPolicy = useRef<RidePolicy>((s, st) => heldRef.current || autoPilot(s, st)).current;
   const manualPolicy = useRef<RidePolicy>(() => heldRef.current).current;
@@ -71,10 +76,11 @@ export default function App() {
       const stage = stageRef.current;
       if (!stage) return;
       const st = useGameStore.getState();
-      const runStats: RideStats = aggregateStats(getObject(st.objectId), st.allocated);
+      const runStats: RideStats = aggregateStats(getObject(st.objectId), st.equipped);
       runningRef.current = true;
       setRunning(true);
       setLive(null);
+      setResults(null);
       activeTicks.current = 0;
       totalTicks.current = 0;
       stage.startRun(runStats, policy, {
@@ -87,12 +93,12 @@ export default function App() {
           const mult = 1 + Math.min(1, activeFrac) * 1.5;
           const awards = addRunRewards(metrics, mult);
           setLive(final);
-          setToast({ awards, mult, key: Date.now() });
           if (autoRunRef.current) {
             window.setTimeout(() => beginRun(loopPolicy), 600);
           } else {
             runningRef.current = false;
             setRunning(false);
+            setResults({ metrics, awards, mult });
           }
         },
       });
@@ -109,10 +115,12 @@ export default function App() {
     const on = !autoRunRef.current;
     setAutoRun(on);
     autoRunRef.current = on;
-    if (on && !runningRef.current) beginRun(loopPolicy);
+    if (on) {
+      setResults(null);
+      if (!runningRef.current) beginRun(loopPolicy);
+    }
   }, [beginRun, loopPolicy, setAutoRun]);
 
-  // Resume a persisted auto-run loop once the stage is ready (after intro).
   useEffect(() => {
     if (!introSeen) return;
     const id = window.setTimeout(() => {
@@ -121,12 +129,12 @@ export default function App() {
     return () => window.clearTimeout(id);
   }, [beginRun, loopPolicy, introSeen]);
 
-  // Hold-to-run input (pointer on the stage + Space). Ignored while a modal is
-  // open so the player can read/click upgrades without triggering a run.
+  const blockedRef = useRef(false);
+  blockedRef.current = boardOpen || !introSeen || !!pendingOffline || !!results;
+
   useEffect(() => {
-    const blocked = () => treeOpen || !introSeen || !!pendingOffline;
     const down = (e: KeyboardEvent) => {
-      if (e.code !== 'Space' || e.repeat || blocked()) return;
+      if (e.code !== 'Space' || e.repeat || blockedRef.current) return;
       e.preventDefault();
       heldRef.current = true;
       if (!runningRef.current && !autoRunRef.current) beginRun(manualPolicy);
@@ -140,7 +148,7 @@ export default function App() {
       window.removeEventListener('keydown', down);
       window.removeEventListener('keyup', up);
     };
-  }, [beginRun, manualPolicy, treeOpen, introSeen, pendingOffline]);
+  }, [beginRun, manualPolicy]);
 
   useEffect(() => {
     const onHide = () => {
@@ -155,13 +163,13 @@ export default function App() {
   }, [touchActive]);
 
   const liveDistance = live ? live.x : 0;
-  const canRunInput = introSeen && !treeOpen && !pendingOffline;
 
   return (
     <div className="app">
       <div className="stage-col">
         <Hud
           wallet={wallet}
+          reserved={reserved}
           bestDistance={bestDistance}
           runCount={runCount}
           liveDistance={liveDistance}
@@ -170,29 +178,17 @@ export default function App() {
         <div
           className="stage-wrap"
           onPointerDown={() => {
-            if (!canRunInput) return;
+            if (blockedRef.current) return;
             heldRef.current = true;
             if (!runningRef.current && !autoRunRef.current) beginRun(manualPolicy);
           }}
           onPointerUp={() => (heldRef.current = false)}
           onPointerLeave={() => (heldRef.current = false)}
         >
-          <PixiStage ref={stageRef} object={object} allocated={allocated} />
+          <PixiStage ref={stageRef} object={object} equipped={equipped} />
           <RideBars state={live} stats={stats} running={running} />
-          {!running && (
-            <div className="stage-hint">Hold to run · ease off to refill stamina</div>
-          )}
-          {toast && (
-            <div className="reward-toast" key={toast.key}>
-              {toast.mult > 1.05 && (
-                <span className="reward-mult">Active ×{toast.mult.toFixed(1)}</span>
-              )}
-              {CURRENCIES.filter((c) => (toast.awards[c.id] ?? 0) > 0).map((c) => (
-                <span key={c.id} style={{ color: c.color }}>
-                  {c.symbol} +{toast.awards[c.id]}
-                </span>
-              ))}
-            </div>
+          {!running && !results && (
+            <div className="stage-hint">Hold to run · ease off to refill stamina · energy ends the run</div>
           )}
         </div>
 
@@ -205,8 +201,8 @@ export default function App() {
           >
             {running ? 'Running…' : '🏃 Run! (hold Space)'}
           </button>
-          <button className="lab-btn" onClick={() => setTreeOpen(true)}>
-            🔬 Upgrades
+          <button className="lab-btn" onClick={() => setBoardOpen(true)}>
+            🔧 Build
           </button>
           <label className="autorun-toggle">
             <input type="checkbox" checked={autoRun} onChange={toggleAutoRun} />
@@ -215,19 +211,29 @@ export default function App() {
         </div>
       </div>
 
-      {treeOpen && (
-        <div className="modal-backdrop tree-backdrop" onClick={() => setTreeOpen(false)}>
-          <div className="tree-modal" onClick={(e) => e.stopPropagation()}>
-            <SkillTree
+      {boardOpen && (
+        <div className="modal-backdrop board-backdrop" onClick={() => setBoardOpen(false)}>
+          <div className="board-modal" onClick={(e) => e.stopPropagation()}>
+            <Board
               object={object}
-              allocated={allocated}
               wallet={wallet}
-              onAllocate={allocate}
-              onRespec={respec}
-              onClose={() => setTreeOpen(false)}
+              unlocked={unlocked}
+              equipped={equipped}
+              onUnlock={unlock}
+              onEquip={equip}
+              onClose={() => setBoardOpen(false)}
             />
           </div>
         </div>
+      )}
+
+      {results && !boardOpen && (
+        <Results
+          metrics={results.metrics}
+          awards={results.awards}
+          mult={results.mult}
+          onContinue={() => setResults(null)}
+        />
       )}
 
       {!introSeen && <Intro onDone={setIntroSeen} />}
