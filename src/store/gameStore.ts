@@ -5,20 +5,17 @@ import type { CurrencyId } from '../data/types';
 import { awardsFor, emptyWallet, type RunMetrics } from '../data/currencies';
 import {
   aggregateStats,
-  baseUpgradeIds,
-  defaultEquipped,
-  findUpgrade,
-  canUnlock,
-  canEquip,
-  slotOf,
-  zeroWallet,
+  canBuyRank,
+  findNode,
+  nextRankCost,
+  rankOf,
+  allNodes,
   type Wallet,
-  type Unlocked,
-  type Equipped,
-} from '../game/builds';
+  type Ranks,
+} from '../game/tree';
 import { simulateRide, autoPilot } from '../sim/ride';
 
-const SAVE_VERSION = 4;
+const SAVE_VERSION = 5;
 const OFFLINE_EFFICIENCY = 0.5;
 const MAX_OFFLINE_SECONDS = 8 * 3600;
 
@@ -32,8 +29,7 @@ export interface GameState {
   saveVersion: number;
   objectId: string;
   wallet: Wallet;
-  unlocked: Unlocked;
-  equipped: Equipped;
+  ranks: Ranks;
   bestDistance: number;
   runCount: number;
   autoRun: boolean;
@@ -42,8 +38,8 @@ export interface GameState {
   introSeen: boolean;
 
   addRunRewards: (metrics: RunMetrics, activeMult?: number) => Record<CurrencyId, number>;
-  unlock: (upgradeId: string) => boolean;
-  equip: (slotId: string, upgradeId: string) => boolean;
+  buyRank: (nodeId: string) => boolean;
+  resetTree: () => void;
   setAutoRun: (on: boolean) => void;
   claimOffline: () => void;
   touchActive: () => void;
@@ -51,19 +47,11 @@ export interface GameState {
   reset: () => void;
 }
 
-function freshUnlocked(): Unlocked {
-  return baseUpgradeIds(getObject(ACTIVE_OBJECT_ID));
-}
-function freshEquipped(): Equipped {
-  return defaultEquipped(getObject(ACTIVE_OBJECT_ID));
-}
-
 const initial = {
   saveVersion: SAVE_VERSION,
   objectId: ACTIVE_OBJECT_ID,
   wallet: emptyWallet(),
-  unlocked: freshUnlocked(),
-  equipped: freshEquipped(),
+  ranks: {} as Ranks,
   bestDistance: 0,
   runCount: 0,
   autoRun: false,
@@ -101,7 +89,7 @@ function computeOffline(state: GameState): OfflineReport | null {
   const elapsed = (Date.now() - state.lastActive) / 1000;
   if (!Number.isFinite(elapsed) || elapsed <= 0) return null;
   const obj = getObject(state.objectId);
-  const stats = aggregateStats(obj, state.equipped);
+  const stats = aggregateStats(obj, state.ranks);
   const capped = Math.min(elapsed, MAX_OFFLINE_SECONDS);
   const { metrics, final } = simulateRide(stats, autoPilot);
   const perRunSeconds = Math.max(1, final.t);
@@ -141,27 +129,37 @@ export const useGameStore = create<GameState>()(
         return awards;
       },
 
-      unlock: (upgradeId) => {
+      buyRank: (nodeId) => {
         const s = get();
         const obj = getObject(s.objectId);
-        if (!canUnlock(obj, s.unlocked, s.wallet, upgradeId)) return false;
-        const u = findUpgrade(obj, upgradeId)!;
+        if (!canBuyRank(obj, s.ranks, s.wallet, nodeId)) return false;
+        const node = findNode(obj, nodeId)!;
+        const cur = rankOf(obj, s.ranks, nodeId);
+        const cost = nextRankCost(node, cur);
         const wallet = { ...s.wallet };
-        for (const c of Object.keys(u.unlockCost) as CurrencyId[]) {
-          wallet[c] = (wallet[c] ?? 0) - (u.unlockCost[c] ?? 0);
+        for (const c of Object.keys(cost) as CurrencyId[]) {
+          wallet[c] = (wallet[c] ?? 0) - (cost[c] ?? 0);
         }
-        set({ wallet, unlocked: [...s.unlocked, upgradeId] });
+        set({ wallet, ranks: { ...s.ranks, [nodeId]: cur + 1 } });
         return true;
       },
 
-      equip: (slotId, upgradeId) => {
+      // Free, full-refund respec — refunds every currency spent, resets ranks.
+      resetTree: () => {
         const s = get();
         const obj = getObject(s.objectId);
-        const slot = slotOf(obj, upgradeId);
-        if (!slot || slot.id !== slotId) return false;
-        if (!canEquip(obj, s.unlocked, s.wallet, s.equipped, upgradeId)) return false;
-        set({ equipped: { ...s.equipped, [slotId]: upgradeId } });
-        return true;
+        const wallet = { ...s.wallet };
+        for (const node of allNodes(obj)) {
+          if (node.root) continue;
+          const r = s.ranks[node.id] ?? 0;
+          for (let step = 0; step < r; step++) {
+            const cost = nextRankCost(node, step);
+            for (const c of Object.keys(cost) as CurrencyId[]) {
+              wallet[c] = (wallet[c] ?? 0) + (cost[c] ?? 0);
+            }
+          }
+        }
+        set({ wallet, ranks: {} });
       },
 
       setAutoRun: (on) => set({ autoRun: on }),
@@ -184,58 +182,45 @@ export const useGameStore = create<GameState>()(
       touchActive: () => set({ lastActive: Date.now() }),
       setIntroSeen: () => set({ introSeen: true }),
 
-      reset: () =>
-        set({
-          ...initial,
-          wallet: emptyWallet(),
-          unlocked: freshUnlocked(),
-          equipped: freshEquipped(),
-          lastActive: Date.now(),
-        }),
+      reset: () => set({ ...initial, wallet: emptyWallet(), ranks: {}, lastActive: Date.now() }),
     }),
     {
       name: 'move.save',
       storage,
       version: SAVE_VERSION,
-      // SAVE MIGRATION — v1 launch proto, v2 cyclist tree, v3 scientist tree,
-      // v4 scientist BUILD board. Carry funding + counters; reset the loadout.
+      // SAVE MIGRATION — v1..v4 prototypes -> v5 research tech tree. Carry the
+      // main currency forward as Research + counters; reset the tree.
       migrate: (persisted, fromVersion) => {
         const anyState = persisted as Record<string, unknown> | undefined;
         if (!anyState) return { ...initial } as GameState;
-        if (fromVersion < 4) {
+        if (fromVersion < 5) {
           const oldWallet = (anyState.wallet ?? {}) as Record<string, number>;
           const wallet = emptyWallet();
-          wallet.grants =
+          wallet.research =
             (typeof anyState.coins === 'number' ? anyState.coins : 0) +
             (oldWallet.coins ?? 0) +
-            (oldWallet.grants ?? 0);
+            (oldWallet.grants ?? 0) +
+            (oldWallet.research ?? 0);
           wallet.pace += (oldWallet.tempo ?? 0) + (oldWallet.pace ?? 0);
           wallet.kinetic += (oldWallet.rush ?? 0) + (oldWallet.kinetic ?? 0);
           wallet.momentum += oldWallet.momentum ?? 0;
           return {
             ...initial,
             wallet,
-            unlocked: freshUnlocked(),
-            equipped: freshEquipped(),
-            bestDistance:
-              typeof anyState.bestDistance === 'number' ? anyState.bestDistance : 0,
+            ranks: {},
+            bestDistance: typeof anyState.bestDistance === 'number' ? anyState.bestDistance : 0,
             runCount: typeof anyState.runCount === 'number' ? anyState.runCount : 0,
             introSeen: anyState.introSeen === true,
             lastActive: Date.now(),
           } as GameState;
         }
-        return {
-          ...initial,
-          ...(anyState as Partial<GameState>),
-          saveVersion: SAVE_VERSION,
-        } as GameState;
+        return { ...initial, ...(anyState as Partial<GameState>), saveVersion: SAVE_VERSION } as GameState;
       },
       partialize: (s) => ({
         saveVersion: s.saveVersion,
         objectId: s.objectId,
         wallet: s.wallet,
-        unlocked: s.unlocked,
-        equipped: s.equipped,
+        ranks: s.ranks,
         bestDistance: s.bestDistance,
         runCount: s.runCount,
         autoRun: s.autoRun,
@@ -251,5 +236,3 @@ export const useGameStore = create<GameState>()(
     },
   ),
 );
-
-export { zeroWallet };

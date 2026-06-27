@@ -1,26 +1,21 @@
 import type { CurrencyId } from './types';
 
 // ---------------------------------------------------------------------------
-// CURRENCIES — derived from a run's METRICS, themed to the story + real physics
+// CURRENCIES — derived from a run's METRICS, themed to the story + physics.
 // ---------------------------------------------------------------------------
-// A shadowy backer funds the lab to "go fast", so the headline currency is
-// Grants. The rest are physics quantities, so they stay meaningful as the game
-// scales from a walking scientist to a bicycle to (one day) relativistic
-// regimes. Kinetic energy and momentum are LOG-scaled so a future heavy/fast
-// object neither trivialises nor wastes them.
-//
-// EXTENSION POINT: add a currency by adding an id to `CurrencyId` + an entry
-// here. The HUD, store and tree-costs all iterate this list.
+// Research is the headline currency (spent on tech-tree node ranks). The rest
+// are physics quantities that gate the deeper/stronger nodes, so they stay
+// meaningful and shape which branches you can actually push into. KE and
+// momentum are log-scaled so future heavy/fast objects stay relevant.
 // ---------------------------------------------------------------------------
 
-/** The measurable outcome of a single run. */
 export interface RunMetrics {
-  distance: number; // metres travelled
-  duration: number; // seconds
-  avgSpeed: number; // m/s
-  maxSpeed: number; // m/s
-  peakMomentum: number; // mass * maxSpeed (raw)
-  peakKE: number; // 0.5 * mass * maxSpeed^2 (raw)
+  distance: number;
+  duration: number;
+  avgSpeed: number;
+  maxSpeed: number;
+  peakMomentum: number;
+  peakKE: number;
   mass: number;
 }
 
@@ -35,11 +30,11 @@ export interface CurrencyDef {
 
 export const CURRENCIES: CurrencyDef[] = [
   {
-    id: 'grants',
-    name: 'Grants',
-    symbol: '💰',
-    color: '#38a169',
-    blurb: 'Funding from your backer for the distance you cover. Spend it freely.',
+    id: 'research',
+    name: 'Research',
+    symbol: '🧪',
+    color: '#38b2ac',
+    blurb: 'Research points from the distance you cover. Spent on tech-tree ranks.',
     award: (m) => Math.floor(m.distance),
   },
   {
@@ -47,15 +42,15 @@ export const CURRENCIES: CurrencyDef[] = [
     name: 'Pace',
     symbol: '🏃',
     color: '#3182ce',
-    blurb: 'Earned from your average speed — rewards keeping momentum up.',
+    blurb: 'From your average speed — gates pacing/endurance nodes.',
     award: (m) => Math.floor(m.avgSpeed * 6),
   },
   {
     id: 'kinetic',
-    name: 'Kinetic Energy',
+    name: 'Kinetic',
     symbol: '⚡',
     color: '#9f7aea',
-    blurb: '½·m·v² at peak speed, log-scaled. The physicist’s favourite.',
+    blurb: '½·m·v² at peak speed, log-scaled — gates power nodes.',
     award: (m) => Math.floor(10 * Math.log2(1 + m.peakKE / 200)),
   },
   {
@@ -63,7 +58,7 @@ export const CURRENCIES: CurrencyDef[] = [
     name: 'Momentum',
     symbol: '🌀',
     color: '#dd6b20',
-    blurb: 'm·v at peak speed, log-scaled so every object stays relevant.',
+    blurb: 'm·v at peak speed, log-scaled — gates heavy/tech nodes.',
     award: (m) => Math.floor(12 * Math.log2(1 + m.peakMomentum / 60)),
   },
 ];

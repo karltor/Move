@@ -11,7 +11,7 @@ interface Props {
 
 // Which metric drives which currency — shown so the payout is legible.
 const SOURCE: Record<CurrencyId, (m: RunMetrics) => string> = {
-  grants: (m) => `${Math.floor(m.distance)} m travelled`,
+  research: (m) => `${Math.floor(m.distance)} m travelled`,
   pace: (m) => `${m.avgSpeed.toFixed(1)} m/s average`,
   kinetic: (m) => `½·m·v² at ${m.maxSpeed.toFixed(1)} m/s`,
   momentum: (m) => `m·v = ${Math.round(m.peakMomentum)}`,

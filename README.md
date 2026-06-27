@@ -22,16 +22,13 @@ Built with **Vite + TypeScript + React** (UI), **PixiJS** (canvas), and
    duration) and the **lump-sum** currencies it earned: 💰 Grants (distance),
    🏃 Pace (avg speed), ⚡ Kinetic Energy (½·m·v²), 🌀 Momentum (m·v). KE and
    momentum are log-scaled so future heavy/fast objects stay relevant.
-3. Open the **Build** board (a modal — the run keeps going behind it). This is a
-   **build game**, not a node-buster:
-   - **Grants** are *spent* to **unlock** an upgrade permanently.
-   - The other currencies are **reserved** to keep an upgrade **equipped**
-     (refunded on unequip) — a finite loadout budget. You equip **one upgrade
-     per slot** (Footwear, Bodywear, Headgear, Conditioning, Power Source),
-     each with several tiers. Because play-styles earn different currencies,
-     and you can't reserve everything, your **build** is a real choice.
-   - Equipping changes **stats and the character's layered SVG art** (jacket,
-     goggles, shoes, exosuit… all visible on the runner).
+3. Open the **Upgrade System** (a tech-tree modal — the run keeps going behind
+   it). Spend **Research** on node **ranks**: some nodes are single unlocks,
+   others are **multi-rank** (e.g. Lightweight Materials → weight −3%/rank).
+   **Prerequisites** gate paths, and the strongest nodes also cost the physics
+   currencies (Pace/Kinetic/Momentum), so you **specialise** rather than max
+   everything — that's your build. Key nodes also swap the character's layered
+   **SVG art** (shoes, jacket, goggles/helmet, exosuit) as they rank up.
 4. **Run again** to go further. Refresh — your progress is still there.
 
 **Active vs idle.** Toggle **Auto-run** to loop runs on a conservative
@@ -86,11 +83,11 @@ exclusive (switching is a respec). So content is **data, not code**:
     `StatMod`, `CurrencyId`.
   - `currencies.ts` defines the currencies and how each is awarded from a run's
     `RunMetrics` (the log-scaled KE/momentum live here).
-  - `scientist.ts` is the starting object: base stats + a build board of 5 slots
-    × tiered upgrades, with SVG art per upgrade (`src/assets/char`) and board
-    icons (`src/assets/icons`). The **bicycle** is a future object (a new data
-    file with the `'layers'` renderKind); relativistic regimes come later still
-    — neither touches existing code.
+  - `scientist.ts` is the starting object: base stats + a research tech tree of
+    categories → multi-rank nodes (prereqs, scaling costs, SVG art in
+    `src/assets/char`, icons in `src/assets/icons`). The **bicycle** is a future
+    object (a new data file with the `'layers'` renderKind); relativistic
+    regimes come later still — neither touches existing code.
   - `index.ts` is the object registry. **Adding a new object = a new data file
     (+ art) registered here** — no changes to the simulation or UI.
 - **`src/sim/ride.ts`** — the **pure** physics. `rideStep(state, stats, exert,
@@ -102,21 +99,22 @@ exclusive (switching is a respec). So content is **data, not code**:
 - **`src/game/tree.ts`** — generic tree logic: allocation rules, currency
   affordability, stat aggregation (additive then multiplicative passes), and
   art resolution. No object-specific code.
-- **`src/game/builds.ts`** — generic build logic: unlock/equip rules, currency
-  reservation (`reservedTotals`/`availableTotals`), tier prerequisites, stat
-  aggregation, and which SVG art layers to draw for the current loadout.
+- **`src/game/tree.ts`** — generic tech-tree logic: rank state, scaling rank
+  costs, prerequisites, stat aggregation (per-rank), progress counts, and which
+  SVG art layers to draw for the current ranks.
 - **`src/game/PixiStage.tsx`** — the canvas. For the `walker` it builds a
   procedural skeleton (swinging limbs, speed-scaled stride, bob) and composites
   the **equipped SVG layers** (torso, headgear, shoes, backpack) onto it,
   rebuilding when the loadout changes. Following camera; speed lines; cheering
   crowd; rough ground.
-- **`src/store/gameStore.ts`** — central Zustand store (wallet, `unlocked`,
-  `equipped`, best/run counters, auto-run, `introSeen`, `lastActive`,
-  `saveVersion`) persisted to `localStorage`, with a **real `migrate`**
-  (v1 → v2 → v3 → v4) and offline catch-up computed on rehydrate.
-- **`src/ui/`** — React HUD (available + reserved currencies), live ride bars
-  (stamina + energy, speed in m/s), the dense **`Board`** modal (unlock/equip),
-  the end-of-run **`Results`** screen, the `Intro` story, and `WelcomeBack`.
+- **`src/store/gameStore.ts`** — central Zustand store (wallet, `ranks`,
+  best/run counters, auto-run, `introSeen`, `lastActive`, `saveVersion`)
+  persisted to `localStorage`, with a **real `migrate`** (v1 → … → v5) and
+  offline catch-up computed on rehydrate.
+- **`src/ui/`** — React HUD (currencies), live ride bars (stamina + energy,
+  speed in m/s), the pannable/zoomable **`TechTree`** modal (search, progress,
+  rank-up), the end-of-run **`Results`** screen, the `Intro` story, and
+  `WelcomeBack`.
 
 ### Out of scope (for now)
 
