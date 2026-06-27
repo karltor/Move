@@ -48,6 +48,15 @@ describe('rideStep', () => {
     const after = rideStep(low, base, false);
     expect(after.stamina).toBeGreaterThan(40);
   });
+
+  it('freshness decays while holding and recovers while resting', () => {
+    let s = initRideState(base);
+    for (let i = 0; i < 60; i++) s = rideStep(s, base, true); // ~1s holding
+    expect(s.freshness).toBeLessThan(1);
+    const held = s.freshness;
+    for (let i = 0; i < 60; i++) s = rideStep(s, base, false); // ~1s resting
+    expect(s.freshness).toBeGreaterThan(held);
+  });
 });
 
 describe('simulateRide', () => {

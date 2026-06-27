@@ -11,8 +11,8 @@ import {
   type Wallet,
   type Ranks,
 } from '../game/tree';
+import { CONFIG } from '../config';
 
-const CELL_X = 210;
 const CELL_Y = 128;
 const W = 176; // tile width
 const H = 64; // tile height
@@ -55,35 +55,46 @@ export function TechTree({ object, wallet, ranks, onBuy, onReset, onClose }: Pro
   const drag = useRef<{ tx: number; ty: number; px: number; py: number; moved: boolean } | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
 
-  // Node pixel positions (top-left) + helpers.
+  // Hub-and-spokes layout: a central Scientist node with categories fanned out
+  // in a top band (growing upward) and a bottom band (growing downward).
   const layout = useMemo(() => {
-    const placed = object.categories.flatMap((cat) =>
-      cat.nodes.map((node) => ({
+    const BAND_GAP = 150; // hub -> nearest (root) row
+    const CAT_SPACING = 620; // horizontal gap between category clusters
+    const NODE_COL = 192; // horizontal gap between node columns within a category
+    const top = object.categories.filter((c) => c.band === 'top');
+    const bottom = object.categories.filter((c) => c.band === 'bottom');
+
+    const catX = (list: typeof top, i: number) => (i - (list.length - 1) / 2) * CAT_SPACING;
+
+    const placed = object.categories.map((cat) => {
+      const band = cat.band;
+      const list = band === 'top' ? top : bottom;
+      const cx = catX(list, list.indexOf(cat));
+      const rootY = band === 'top' ? -BAND_GAP : BAND_GAP;
+      const dir = band === 'top' ? -1 : 1; // rows grow away from hub
+      const nodes = cat.nodes.map((node) => ({
         node,
-        cat,
-        x: (cat.pos.x + node.col) * CELL_X,
-        y: (cat.pos.y + node.row) * CELL_Y,
-      })),
-    );
-    const byId = new Map(placed.map((p) => [p.node.id, p]));
-    const xs = placed.map((p) => p.x);
-    const ys = placed.map((p) => p.y);
-    const minX = Math.min(...xs), maxX = Math.max(...xs) + W;
-    const minY = Math.min(...ys) - CELL_Y, maxY = Math.max(...ys) + H;
-    return { placed, byId, minX, maxX, minY, maxY, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2 };
+        x: cx + (node.col - 1) * NODE_COL,
+        y: rootY + dir * node.row * CELL_Y,
+      }));
+      return { cat, cx, rootY, nodes };
+    });
+
+    const byId = new Map(placed.flatMap((c) => c.nodes.map((n) => [n.node.id, n])));
+    const all = placed.flatMap((c) => c.nodes);
+    const minX = Math.min(...all.map((p) => p.x));
+    const maxX = Math.max(...all.map((p) => p.x)) + W;
+    const minY = Math.min(...all.map((p) => p.y)) - CELL_Y;
+    const maxY = Math.max(...all.map((p) => p.y)) + H;
+    return { cats: placed, byId, minX, maxX, minY, maxY };
   }, [object]);
 
-  // Fit-to-view on mount.
+  // Open centred on the hub at a readable zoom.
   useEffect(() => {
     const el = canvasRef.current;
     if (!el) return;
-    const fit = () => {
-      // Start at a readable zoom anchored top-left; the tree is bigger than the
-      // viewport on purpose — pan/zoom to explore it.
-      const scale = 0.82;
-      setView({ scale, tx: 70 - layout.minX * scale, ty: 96 - layout.minY * scale });
-    };
-    fit();
+    const scale = CONFIG.tree.defaultZoom;
+    setView({ scale, tx: el.clientWidth / 2, ty: el.clientHeight / 2 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layout]);
 
@@ -92,10 +103,11 @@ export function TechTree({ object, wallet, ranks, onBuy, onReset, onClose }: Pro
     (e.target as Element).setPointerCapture?.(e.pointerId);
   }
   function onPointerMove(e: React.PointerEvent) {
-    if (!drag.current) return;
-    const dx = e.clientX - drag.current.px, dy = e.clientY - drag.current.py;
-    if (Math.abs(dx) + Math.abs(dy) > 4) drag.current.moved = true;
-    setView((v) => ({ ...v, tx: drag.current!.tx + dx, ty: drag.current!.ty + dy }));
+    const d = drag.current;
+    if (!d) return;
+    const dx = e.clientX - d.px, dy = e.clientY - d.py;
+    if (Math.abs(dx) + Math.abs(dy) > 4) d.moved = true;
+    setView((v) => ({ ...v, tx: d.tx + dx, ty: d.ty + dy }));
   }
   function onPointerUp() {
     drag.current = null;
@@ -109,6 +121,7 @@ export function TechTree({ object, wallet, ranks, onBuy, onReset, onClose }: Pro
     const p = layout.byId.get(id)!;
     return { x: p.x + W / 2, y: p.y + H / 2 };
   };
+  const rootOf = (catId: string) => layout.cats.find((c) => c.cat.id === catId)!.cat.nodes[0].id;
 
   const selected = selectedId ? findNode(object, selectedId) : null;
   const progress = treeProgress(object, ranks, wallet);
@@ -151,61 +164,74 @@ export function TechTree({ object, wallet, ranks, onBuy, onReset, onClose }: Pro
       >
         <svg width="100%" height="100%">
           <g transform={`translate(${view.tx},${view.ty}) scale(${view.scale})`}>
+            {/* spokes: hub -> each category root */}
+            {layout.cats.map(({ cat }) => {
+              const r = center(rootOf(cat.id));
+              return <line key={`spoke-${cat.id}`} x1={0} y1={0} x2={r.x} y2={r.y} className="tt-spoke" stroke={cat.color} />;
+            })}
+
             {/* prerequisite edges */}
-            {layout.placed.map(({ node }) =>
-              node.prereqs.map((p) => {
-                if (!layout.byId.has(p)) return null;
-                const a = center(p), b = center(node.id);
-                const on = rankOf(object, ranks, p) >= 1;
-                return (
-                  <line
-                    key={`${p}-${node.id}`}
-                    x1={a.x} y1={a.y} x2={b.x} y2={b.y}
-                    className={on ? 'tt-edge on' : 'tt-edge'}
-                  />
-                );
-              }),
+            {layout.cats.flatMap(({ nodes }) =>
+              nodes.flatMap(({ node }) =>
+                node.prereqs.map((p) => {
+                  if (!layout.byId.has(p)) return null;
+                  const a = center(p), b = center(node.id);
+                  const on = rankOf(object, ranks, p) >= 1;
+                  return (
+                    <line key={`${p}-${node.id}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+                      className={on ? 'tt-edge on' : 'tt-edge'} />
+                  );
+                }),
+              ),
             )}
 
-            {/* category headers */}
-            {object.categories.map((cat) => {
-              const hx = (cat.pos.x + 1) * CELL_X - 10;
-              const hy = cat.pos.y * CELL_Y - 64;
+            {/* central hub */}
+            <g className="tt-hub">
+              <circle r={34} />
+              <text y={5} textAnchor="middle">🔬</text>
+              <text y={54} textAnchor="middle" className="tt-hub-label">SCIENTIST</text>
+            </g>
+
+            {/* category headers (above the root, near the hub) */}
+            {layout.cats.map(({ cat, cx, rootY }) => {
+              const hy = cat.band === 'top' ? rootY - 60 : rootY + H + 26;
               return (
-                <g key={cat.id} transform={`translate(${hx},${hy})`}>
-                  <rect x={-4} y={0} width={210} height={38} rx={9} fill="rgba(255,255,255,0.05)" stroke={cat.color} strokeWidth={2} />
-                  <image href={cat.icon} x={6} y={7} width={24} height={24} />
-                  <text x={38} y={25} className="tt-cat-name" fill={cat.color}>{cat.name}</text>
+                <g key={cat.id} transform={`translate(${cx - 4},${hy})`}>
+                  <rect x={-6} y={-26} width={216} height={36} rx={9} fill="rgba(255,255,255,0.05)" stroke={cat.color} strokeWidth={2} />
+                  <image href={cat.icon} x={4} y={-22} width={24} height={24} />
+                  <text x={36} y={-4} className="tt-cat-name" fill={cat.color}>{cat.name}</text>
                 </g>
               );
             })}
 
             {/* nodes */}
-            {layout.placed.map(({ node, cat, x, y }) => {
-              const cur = rankOf(object, ranks, node.id);
-              const status = node.root ? 'root' : nodeStatus(object, ranks, wallet, node.id);
-              const dim = q.length > 0 && !node.name.toLowerCase().includes(q);
-              return (
-                <g
-                  key={node.id}
-                  transform={`translate(${x},${y})`}
-                  className={`tt-node ${status} ${selectedId === node.id ? 'sel' : ''} ${dim ? 'dim' : ''}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (drag.current?.moved) return;
-                    setSelectedId(node.id);
-                    if (canBuyRank(object, ranks, wallet, node.id)) onBuy(node.id);
-                  }}
-                >
-                  <rect width={W} height={H} rx={9} className="tt-tile" style={{ ['--cat' as string]: cat.color }} />
-                  <image href={node.icon} x={10} y={H / 2 - 18} width={36} height={36} />
-                  <text x={54} y={27} className="tt-node-name">{trunc(node.name)}</text>
-                  <text x={54} y={48} className="tt-node-rank">
-                    {node.root ? '1/1' : `${cur}/${node.maxRanks}`}
-                  </text>
-                </g>
-              );
-            })}
+            {layout.cats.flatMap(({ cat, nodes }) =>
+              nodes.map(({ node, x, y }) => {
+                const cur = rankOf(object, ranks, node.id);
+                const status = node.root ? 'root' : nodeStatus(object, ranks, wallet, node.id);
+                const dim = q.length > 0 && !node.name.toLowerCase().includes(q);
+                return (
+                  <g
+                    key={node.id}
+                    transform={`translate(${x},${y})`}
+                    className={`tt-node ${status} ${selectedId === node.id ? 'sel' : ''} ${dim ? 'dim' : ''}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (drag.current?.moved) return;
+                      setSelectedId(node.id);
+                      if (canBuyRank(object, ranks, wallet, node.id)) onBuy(node.id);
+                    }}
+                  >
+                    <rect width={W} height={H} rx={9} className="tt-tile" style={{ ['--cat' as string]: cat.color }} />
+                    <image href={node.icon} x={10} y={H / 2 - 18} width={36} height={36} />
+                    <text x={54} y={27} className="tt-node-name">{trunc(node.name)}</text>
+                    <text x={54} y={48} className="tt-node-rank">
+                      {node.root ? '1/1' : `${cur}/${node.maxRanks}`}
+                    </text>
+                  </g>
+                );
+              }),
+            )}
           </g>
         </svg>
       </div>
@@ -214,7 +240,7 @@ export function TechTree({ object, wallet, ranks, onBuy, onReset, onClose }: Pro
         {selected ? (
           <NodeDetail object={object} node={selected} ranks={ranks} wallet={wallet} onBuy={onBuy} />
         ) : (
-          <p className="tt-detail-empty">Drag to pan · scroll to zoom · click a node to research it. You can’t max everything — specialise.</p>
+          <p className="tt-detail-empty">{CONFIG.texts.treeHint}</p>
         )}
       </div>
     </section>

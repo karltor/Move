@@ -11,6 +11,7 @@ import {
   type RidePolicy,
 } from '../sim/ride';
 import { resolveArt, type Ranks } from './tree';
+import { CONFIG } from '../config';
 
 // Base body parts (always drawn; equipped art overrides torso / adds shoes etc.)
 import headSvg from '../assets/char/sci_head.svg';
@@ -20,11 +21,11 @@ import uparmSvg from '../assets/char/sci_uparm.svg';
 import forearmSvg from '../assets/char/sci_forearm.svg';
 import torsoBaseSvg from '../assets/char/torso0.svg';
 
-const PPU = 20;
+const PPU = CONFIG.render.pixelsPerMetre;
 const GROUND_FROM_BOTTOM = 96;
 const CAMERA_LEFT_FRAC = 0.2;
 const STEP_MS = 1000 * DT;
-const COLLAPSE_MS = 750;
+const COLLAPSE_MS = CONFIG.render.collapseMs;
 
 // Rig anatomy (px, in feet-origin space; up is negative y).
 const HIP_Y = -62;
@@ -368,14 +369,20 @@ export const PixiStage = forwardRef<StageHandle, Props>(function PixiStage({ obj
 
   function animateWalker(app: Application, fg: Container, v: number, deltaMS: number) {
     const rig = walkerRef.current;
-    phaseRef.current += (2.0 + v * 0.9) * (deltaMS / 1000);
-    const ph = phaseRef.current;
-    const swing = Math.min(0.7, 0.05 + v * 0.06);
+    const G = CONFIG.render.gait;
+    phaseRef.current += (G.strideBase + v * G.stridePerSpeed) * (deltaMS / 1000);
+    const ph = phaseRef.current * G.dir;
+    const swing = Math.min(G.swingMax, G.swingBase + v * G.swingPerSpeed);
     if (rig) {
-      setLimb(rig.legFront, Math.sin(ph) * swing, Math.max(0, Math.sin(ph + 2.2)) * swing * 1.7);
-      setLimb(rig.legBack, Math.sin(ph + Math.PI) * swing, Math.max(0, Math.sin(ph + Math.PI + 2.2)) * swing * 1.7);
-      setLimb(rig.armFront, Math.sin(ph + Math.PI) * swing * 0.8, 0.25 + Math.max(0, Math.sin(ph)) * 0.3);
-      setLimb(rig.armBack, Math.sin(ph) * swing * 0.8, 0.25 + Math.max(0, Math.sin(ph + Math.PI)) * 0.3);
+      // Stance leg sweeps from front to back (+thigh = foot back); the knee
+      // bends during the recovery half (foot lifted, swinging forward).
+      const kneeF = Math.max(0, -Math.cos(ph)) * swing * 1.9;
+      const kneeB = Math.max(0, Math.cos(ph)) * swing * 1.9;
+      setLimb(rig.legFront, Math.sin(ph) * swing, kneeF);
+      setLimb(rig.legBack, -Math.sin(ph) * swing, kneeB);
+      // Arms swing opposite the same-side leg, with a relaxed elbow bend.
+      setLimb(rig.armFront, -Math.sin(ph) * swing * 0.85, 0.3 + Math.max(0, Math.cos(ph)) * 0.35);
+      setLimb(rig.armBack, Math.sin(ph) * swing * 0.85, 0.3 + Math.max(0, -Math.cos(ph)) * 0.35);
     }
     fg.y = groundY(app) - Math.abs(Math.sin(ph)) * (1.5 + v * 0.18);
     fg.rotation = Math.min(0.1, v * 0.01);

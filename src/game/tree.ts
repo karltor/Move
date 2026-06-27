@@ -1,6 +1,7 @@
 import type { GameObjectDef, TreeNode, CurrencyId, Cost } from '../data/types';
 import type { RideStats } from '../sim/ride';
 import { CURRENCY_IDS } from '../data/currencies';
+import { CONFIG } from '../config';
 
 // ---------------------------------------------------------------------------
 // TECH-TREE LOGIC (generic across every object)
@@ -12,7 +13,7 @@ import { CURRENCY_IDS } from '../data/currencies';
 
 export type Wallet = Record<CurrencyId, number>;
 export type Ranks = Record<string, number>;
-const DEFAULT_GROWTH = 1.7;
+const DEFAULT_GROWTH = CONFIG.tree.costGrowth;
 
 export function allNodes(obj: GameObjectDef): TreeNode[] {
   return obj.categories.flatMap((c) => c.nodes);

@@ -1,5 +1,6 @@
 import type { StatKey } from '../data/types';
 import type { RunMetrics } from '../data/currencies';
+import { CONFIG } from '../config';
 
 // ---------------------------------------------------------------------------
 // PURE LOCOMOTION SIMULATION
@@ -26,13 +27,14 @@ export interface RideState {
   v: number; // speed (m/s)
   stamina: number; // fast burst pool
   reserve: number; // total energy left this run
+  freshness: number; // 0..1 skill factor: decays while held, recovers when eased off
   maxSpeed: number; // peak speed reached
 }
 
-export const DT = 1 / 60;
-export const STOP_SPEED = 0.3; // below this (with no reserve) the run ends
-const MAX_SECONDS = 150; // hard safety cap
-const RUN_BURN_MULT = 1.7; // exerting burns reserve faster than walking
+export const DT = CONFIG.sim.dt;
+export const STOP_SPEED = CONFIG.sim.stopSpeed;
+const MAX_SECONDS = CONFIG.sim.maxRunSeconds;
+const RUN_BURN_MULT = CONFIG.sim.runBurnMult;
 
 export function initRideState(stats: RideStats): RideState {
   return {
@@ -41,6 +43,7 @@ export function initRideState(stats: RideStats): RideState {
     v: 0,
     stamina: stats.maxStamina,
     reserve: stats.maxReserve,
+    freshness: 1,
     maxSpeed: 0,
   };
 }
@@ -64,6 +67,7 @@ export function rideStep(
 
   let reserve = state.reserve;
   let stamina = state.stamina;
+  let freshness = state.freshness;
   let force = 0;
 
   // Base locomotion (walking) — always on while there's energy, no stamina.
@@ -72,33 +76,45 @@ export function rideStep(
     reserve -= stats.energyBurn * dt;
   }
 
-  // Exertion (running / sprinting) — extra force, spends stamina + reserve.
+  // SKILL — "freshness": holding continuously makes each stride less effective;
+  // easing off recovers it. So rhythmic pulsing beats mashing the button.
+  const fresh = state.freshness;
+  const freshFactor = CONFIG.sim.freshFloor + (1 - CONFIG.sim.freshFloor) * fresh;
+
   let exerting = false;
   if (exert && stamina > 0 && reserve > 0) {
-    force += stats.runPower * speedFactor;
+    // Run force scaled by freshness — fresh legs push much harder.
+    force += stats.runPower * speedFactor * freshFactor;
     stamina -= stats.runDrain * dt;
     reserve -= stats.energyBurn * (RUN_BURN_MULT - 1) * dt;
+    freshness -= CONFIG.sim.freshDecayPerSec * dt;
     exerting = true;
+  } else if (exert && reserve > 0 && stamina <= 0) {
+    // Redlining: holding with an empty burst pool just wastes energy (gasping).
+    reserve -= stats.energyBurn * (CONFIG.sim.overexertBurnMult - 1) * dt;
   }
 
   // Assist (e.g. the Exosuit speciality): externally-powered passive force —
-  // it costs no body energy, so it helps even idle runs go further. It still
-  // only applies while the run is alive (reserve > 0 keeps you moving).
+  // it costs no body energy, so it helps even idle runs go further.
   if (stats.assist > 0 && reserve > 0) {
     force += stats.assist * speedFactor;
   }
 
-  // Easing off refills the burst pool from the reserve.
-  if (!exerting && reserve > 0) {
-    const amt = Math.min(stats.staminaRefill * dt, reserve, stats.maxStamina - stamina);
-    if (amt > 0) {
-      stamina += amt;
-      reserve -= amt;
+  // Easing off refills the burst pool from the reserve and restores freshness.
+  if (!exerting) {
+    freshness += CONFIG.sim.freshRecoverPerSec * dt;
+    if (reserve > 0) {
+      const amt = Math.min(stats.staminaRefill * dt, reserve, stats.maxStamina - stamina);
+      if (amt > 0) {
+        stamina += amt;
+        reserve -= amt;
+      }
     }
   }
 
   stamina = clamp(stamina, 0, stats.maxStamina);
   reserve = Math.max(0, reserve);
+  freshness = clamp(freshness, 0, 1);
 
   const dragAccel = (stats.drag * state.v * state.v) / mass;
   const rollAccel = state.v > 0.02 ? stats.rollResist : 0;
@@ -113,6 +129,7 @@ export function rideStep(
     v,
     stamina,
     reserve,
+    freshness,
     maxSpeed: Math.max(state.maxSpeed, v),
   };
 }

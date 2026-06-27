@@ -13,6 +13,7 @@ import { PixiStage, type StageHandle } from './game/PixiStage';
 import type { RunMetrics } from './data/currencies';
 import type { CurrencyId } from './data/types';
 import { pickWeather, applyWeather, type Weather } from './data/weather';
+import { CONFIG } from './config';
 import { Hud } from './ui/Hud';
 import { RideBars } from './ui/RideBars';
 import { TechTree } from './ui/TechTree';
@@ -92,7 +93,7 @@ export default function App() {
         onComplete: (final, finalStats) => {
           const metrics: RunMetrics = metricsFor(finalStats, final);
           const activeFrac = totalTicks.current ? activeTicks.current / totalTicks.current : 0;
-          const mult = 1 + Math.min(1, activeFrac) * 1.5;
+          const mult = 1 + Math.min(1, activeFrac) * CONFIG.economy.activeBonusMax;
           const awards = addRunRewards(metrics, mult);
           setLive(final);
           if (autoRunRef.current) {
@@ -184,9 +185,7 @@ export default function App() {
           <PixiStage ref={stageRef} object={object} ranks={ranks} />
           <RideBars state={live} stats={stats} running={running} />
           <WeatherChip weather={weather} resist={stats.weatherResist} />
-          {!running && !results && (
-            <div className="stage-hint">Hold to run · ease off to refill stamina · energy ends the run</div>
-          )}
+          {!running && !results && <div className="stage-hint">{CONFIG.texts.runHint}</div>}
         </div>
 
         <div className="launch-bar">

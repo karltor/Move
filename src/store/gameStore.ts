@@ -14,10 +14,11 @@ import {
   type Ranks,
 } from '../game/tree';
 import { simulateRide, autoPilot } from '../sim/ride';
+import { CONFIG } from '../config';
 
 const SAVE_VERSION = 5;
-const OFFLINE_EFFICIENCY = 0.5;
-const MAX_OFFLINE_SECONDS = 8 * 3600;
+const OFFLINE_EFFICIENCY = CONFIG.economy.offlineEfficiency;
+const MAX_OFFLINE_SECONDS = CONFIG.economy.maxOfflineHours * 3600;
 
 export interface OfflineReport {
   runs: number;
