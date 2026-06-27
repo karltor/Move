@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 56" width="48" height="56">
+  <!-- neck -->
+  <rect x="20" y="43" width="9" height="13" fill="#e8b07d"/>
+  <!-- ear (back side) -->
+  <ellipse cx="13" cy="30" rx="3.6" ry="4.6" fill="#e8b07d"/>
+  <!-- head -->
+  <ellipse cx="25" cy="27" rx="15" ry="17" fill="#f1c27d"/>
+  <ellipse cx="25" cy="34" rx="13" ry="10" fill="#ecaa72" opacity="0.4"/>
+  <!-- hair -->
+  <path d="M10 26 Q10 5 27 6 Q42 7 40 26 Q39 17 32 14 Q29 8 21 10 Q13 12 13 23 Q12 28 12 33 Q9 30 10 26 Z" fill="#5b4636"/>
+  <path d="M10 26 Q10 5 27 6 Q34 6 38 13 Q31 10 24 12 Q15 14 14 24 Q13 28 12 33 Q9 30 10 26 Z" fill="#6b5443"/>
+  <!-- glasses -->
+  <circle cx="30" cy="26" r="5.2" fill="#d3ecff" stroke="#2d3748" stroke-width="2"/>
+  <circle cx="19.5" cy="27" r="4.2" fill="#d3ecff" stroke="#2d3748" stroke-width="2"/>
+  <line x1="24" y1="26" x2="25.5" y2="26" stroke="#2d3748" stroke-width="2"/>
+  <line x1="35" y1="25" x2="39" y2="24" stroke="#2d3748" stroke-width="1.8"/>
+  <!-- nose + mouth -->
+  <path d="M39 29 q3 2 -1 4.5" fill="none" stroke="#d4925f" stroke-width="1.6" stroke-linecap="round"/>
+  <path d="M33 37 q4 2.5 7 0.5" fill="none" stroke="#a85d4a" stroke-width="1.6" stroke-linecap="round"/>
+</svg>

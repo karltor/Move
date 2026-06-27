@@ -23,7 +23,8 @@ export type StatKey =
   | 'weight'
   | 'rollResist'
   | 'topSpeed'
-  | 'assist';
+  | 'assist'
+  | 'weatherResist'; // 0..~0.9: dampens weather effects (good and bad)
 
 export type CurrencyId = 'research' | 'pace' | 'kinetic' | 'momentum';
 export type Cost = Partial<Record<CurrencyId, number>>;

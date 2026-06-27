@@ -118,6 +118,7 @@ const categories: TreeCategory[] = [
       { id: 'su_pacing', name: 'Pacing', desc: 'Smarter effort each rank.', icon: iconClipboard, maxRanks: 3, cost: { research: 75 }, mods: [{ stat: 'staminaRefill', add: 2 }, { stat: 'runDrain', add: -1 }], prereqs: ['su_root'], col: 0, row: 1 },
       { id: 'su_forage', name: 'Foraging', desc: 'Top up the energy tank.', icon: iconNone, maxRanks: 3, cost: { research: 85 }, mods: [{ stat: 'maxReserve', add: 25 }], prereqs: ['su_root'], col: 2, row: 1 },
       { id: 'su_wind', name: 'Second Wind', desc: 'A burst pool that refuses to quit.', icon: iconClipboard, maxRanks: 1, cost: { research: 260, pace: 30 }, mods: [{ stat: 'maxStamina', add: 50 }], prereqs: ['su_pacing'], col: 0, row: 2 },
+      { id: 'su_acclim', name: 'Acclimatization', desc: 'Shrug off the weather — dampens its effects each rank.', icon: iconNone, maxRanks: 3, cost: { research: 130, momentum: 12 }, mods: [{ stat: 'weatherResist', add: 0.18 }], prereqs: ['su_forage'], col: 2, row: 2 },
     ],
   },
   {
@@ -151,6 +152,7 @@ export const scientist: GameObjectDef = {
     rollResist: 0.7,
     topSpeed: 12,
     assist: 0,
+    weatherResist: 0,
   },
   categories,
 };

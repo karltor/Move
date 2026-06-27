@@ -12,11 +12,13 @@ import {
 import { PixiStage, type StageHandle } from './game/PixiStage';
 import type { RunMetrics } from './data/currencies';
 import type { CurrencyId } from './data/types';
+import { pickWeather, applyWeather, type Weather } from './data/weather';
 import { Hud } from './ui/Hud';
 import { RideBars } from './ui/RideBars';
 import { TechTree } from './ui/TechTree';
 import { Results } from './ui/Results';
 import { WelcomeBack } from './ui/WelcomeBack';
+import { WeatherChip } from './ui/WeatherChip';
 import { Intro } from './ui/Intro';
 import './App.css';
 
@@ -59,6 +61,7 @@ export default function App() {
   const [live, setLive] = useState<RideState | null>(null);
   const [treeOpen, setTreeOpen] = useState(false);
   const [results, setResults] = useState<ResultState | null>(null);
+  const [weather, setWeather] = useState<Weather>(() => pickWeather());
 
   const loopPolicy = useRef<RidePolicy>((s, st) => heldRef.current || autoPilot(s, st)).current;
   const manualPolicy = useRef<RidePolicy>(() => heldRef.current).current;
@@ -74,7 +77,10 @@ export default function App() {
       const stage = stageRef.current;
       if (!stage) return;
       const st = useGameStore.getState();
-      const runStats: RideStats = aggregateStats(getObject(st.objectId), st.ranks);
+      const baseRunStats = aggregateStats(getObject(st.objectId), st.ranks);
+      const w = pickWeather();
+      setWeather(w);
+      const runStats: RideStats = applyWeather(baseRunStats, w, baseRunStats.weatherResist);
       runningRef.current = true;
       setRunning(true);
       setLive(null);
@@ -177,6 +183,7 @@ export default function App() {
         >
           <PixiStage ref={stageRef} object={object} ranks={ranks} />
           <RideBars state={live} stats={stats} running={running} />
+          <WeatherChip weather={weather} resist={stats.weatherResist} />
           {!running && !results && (
             <div className="stage-hint">Hold to run · ease off to refill stamina · energy ends the run</div>
           )}
@@ -215,7 +222,16 @@ export default function App() {
       )}
 
       {results && !treeOpen && (
-        <Results metrics={results.metrics} awards={results.awards} mult={results.mult} onContinue={() => setResults(null)} />
+        <Results
+          metrics={results.metrics}
+          awards={results.awards}
+          mult={results.mult}
+          onContinue={() => setResults(null)}
+          onUpgrades={() => {
+            setResults(null);
+            setTreeOpen(true);
+          }}
+        />
       )}
 
       {!introSeen && <Intro onDone={setIntroSeen} />}

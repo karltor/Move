@@ -21,6 +21,7 @@ const base: RideStats = {
   rollResist: 0.7,
   topSpeed: 12,
   assist: 0,
+  weatherResist: 0,
 };
 
 describe('rideStep', () => {

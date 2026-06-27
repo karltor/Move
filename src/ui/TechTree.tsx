@@ -12,10 +12,10 @@ import {
   type Ranks,
 } from '../game/tree';
 
-const CELL_X = 156;
-const CELL_Y = 96;
-const W = 122; // tile width
-const H = 46; // tile height
+const CELL_X = 210;
+const CELL_Y = 128;
+const W = 176; // tile width
+const H = 64; // tile height
 
 const STAT_LABELS: Record<StatKey, string> = {
   walkPower: 'Walk Power',
@@ -30,6 +30,7 @@ const STAT_LABELS: Record<StatKey, string> = {
   rollResist: 'Roll Resist',
   topSpeed: 'Top Speed',
   assist: 'Assist',
+  weatherResist: 'Weather Resist',
 };
 
 function perRankText(m: { stat: StatKey; add?: number; mul?: number }) {
@@ -77,11 +78,10 @@ export function TechTree({ object, wallet, ranks, onBuy, onReset, onClose }: Pro
     const el = canvasRef.current;
     if (!el) return;
     const fit = () => {
-      const w = el.clientWidth, h = el.clientHeight;
-      const tw = layout.maxX - layout.minX + 80;
-      const th = layout.maxY - layout.minY + 80;
-      const scale = Math.min(1.1, Math.max(0.4, Math.min(w / tw, h / th)));
-      setView({ scale, tx: w / 2 - layout.cx * scale, ty: h / 2 - layout.cy * scale });
+      // Start at a readable zoom anchored top-left; the tree is bigger than the
+      // viewport on purpose — pan/zoom to explore it.
+      const scale = 0.82;
+      setView({ scale, tx: 70 - layout.minX * scale, ty: 96 - layout.minY * scale });
     };
     fit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -169,13 +169,13 @@ export function TechTree({ object, wallet, ranks, onBuy, onReset, onClose }: Pro
 
             {/* category headers */}
             {object.categories.map((cat) => {
-              const hx = (cat.pos.x + 1) * CELL_X - 6;
-              const hy = cat.pos.y * CELL_Y - 56;
+              const hx = (cat.pos.x + 1) * CELL_X - 10;
+              const hy = cat.pos.y * CELL_Y - 64;
               return (
                 <g key={cat.id} transform={`translate(${hx},${hy})`}>
-                  <rect x={-4} y={0} width={150} height={30} rx={7} fill="rgba(255,255,255,0.04)" stroke={cat.color} strokeWidth={1.5} />
-                  <image href={cat.icon} x={4} y={5} width={20} height={20} />
-                  <text x={30} y={20} className="tt-cat-name" fill={cat.color}>{cat.name}</text>
+                  <rect x={-4} y={0} width={210} height={38} rx={9} fill="rgba(255,255,255,0.05)" stroke={cat.color} strokeWidth={2} />
+                  <image href={cat.icon} x={6} y={7} width={24} height={24} />
+                  <text x={38} y={25} className="tt-cat-name" fill={cat.color}>{cat.name}</text>
                 </g>
               );
             })}
@@ -197,10 +197,10 @@ export function TechTree({ object, wallet, ranks, onBuy, onReset, onClose }: Pro
                     if (canBuyRank(object, ranks, wallet, node.id)) onBuy(node.id);
                   }}
                 >
-                  <rect width={W} height={H} rx={8} className="tt-tile" style={{ ['--cat' as string]: cat.color }} />
-                  <image href={node.icon} x={7} y={H / 2 - 13} width={26} height={26} />
-                  <text x={40} y={19} className="tt-node-name">{trunc(node.name)}</text>
-                  <text x={40} y={36} className="tt-node-rank">
+                  <rect width={W} height={H} rx={9} className="tt-tile" style={{ ['--cat' as string]: cat.color }} />
+                  <image href={node.icon} x={10} y={H / 2 - 18} width={36} height={36} />
+                  <text x={54} y={27} className="tt-node-name">{trunc(node.name)}</text>
+                  <text x={54} y={48} className="tt-node-rank">
                     {node.root ? '1/1' : `${cur}/${node.maxRanks}`}
                   </text>
                 </g>
@@ -278,5 +278,5 @@ function NodeDetail({
 }
 
 function trunc(s: string) {
-  return s.length > 15 ? s.slice(0, 14) + '…' : s;
+  return s.length > 18 ? s.slice(0, 17) + '…' : s;
 }
