@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 26 34" width="26" height="34">
+  <!-- shin -->
+  <path d="M4.5 1 H13 Q14.5 1 14 5 L12.5 23 H6.5 L4.5 5 Q4 1 4.5 1 Z" fill="#34495e"/>
+  <rect x="5.5" y="2" width="1.8" height="20" rx="1" fill="#46627e" opacity="0.7"/>
+  <!-- ankle/sock -->
+  <rect x="5.5" y="21" width="8" height="5" rx="1.5" fill="#cbd5e0"/>
+  <!-- basic shoe (points right) -->
+  <path d="M4.5 26 Q4.5 23.5 9 23.5 L13 25.5 Q22 26.5 24 30.5 Q24 32.5 21.5 32.5 L6 32.5 Q4 32.5 4 30.5 Z" fill="#3a3f4a"/>
+  <path d="M4 32.5 H24 V34 H4 Z" fill="#23262d"/>
+  <path d="M6 27 L11 28.5" stroke="#596170" stroke-width="1"/>
+</svg>

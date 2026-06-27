@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 14 28" width="14" height="28">
+  <!-- rolled cuff -->
+  <rect x="2.5" y="0" width="9" height="5" rx="2" fill="#dde3ec"/>
+  <!-- skin forearm -->
+  <path d="M3.5 4 H10.5 Q12 4 11.5 9 L10.5 20 Q10.5 22 8.5 22 H5.5 Q3.5 22 3.5 20 L2.5 9 Q2 4 3.5 4 Z" fill="#f1c27d"/>
+  <!-- hand -->
+  <circle cx="7" cy="23.5" r="4" fill="#ecb274"/>
+</svg>

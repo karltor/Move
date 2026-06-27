@@ -45,9 +45,10 @@ export function initRideState(stats: RideStats): RideState {
   };
 }
 
-/** True once the object is spent and stopped — the run is over. */
+/** True once the object is out of energy — the run ends promptly (it then
+ *  collapses on screen) rather than coasting to a slow halt. */
 export function isFinished(state: RideState): boolean {
-  return (state.reserve <= 0 && state.v < STOP_SPEED) || state.t >= MAX_SECONDS;
+  return (state.reserve <= 0 && state.t > 0.1) || state.t >= MAX_SECONDS;
 }
 
 /** Advance one step. Pure: returns a new state, never mutates the input. */

@@ -98,6 +98,7 @@ export function aggregateStats(obj: GameObjectDef, ranks: Ranks): RideStats {
   stats.rollResist = Math.max(0, stats.rollResist);
   stats.topSpeed = Math.max(2, stats.topSpeed);
   stats.assist = Math.max(0, stats.assist);
+  stats.weatherResist = Math.min(0.9, Math.max(0, stats.weatherResist));
   return stats;
 }
 

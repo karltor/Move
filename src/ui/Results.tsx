@@ -7,6 +7,7 @@ interface Props {
   awards: Record<CurrencyId, number>;
   mult: number;
   onContinue: () => void;
+  onUpgrades: () => void;
 }
 
 // Which metric drives which currency — shown so the payout is legible.
@@ -17,7 +18,7 @@ const SOURCE: Record<CurrencyId, (m: RunMetrics) => string> = {
   momentum: (m) => `m·v = ${Math.round(m.peakMomentum)}`,
 };
 
-export function Results({ metrics, awards, mult, onContinue }: Props) {
+export function Results({ metrics, awards, mult, onContinue, onUpgrades }: Props) {
   return (
     <div className="modal-backdrop results-backdrop">
       <div className="results">
@@ -51,9 +52,14 @@ export function Results({ metrics, awards, mult, onContinue }: Props) {
           ))}
         </div>
 
-        <button className="results-continue" onClick={onContinue} autoFocus>
-          Continue →
-        </button>
+        <div className="results-actions">
+          <button className="results-upgrades" onClick={onUpgrades}>
+            🔬 Open Upgrades
+          </button>
+          <button className="results-continue" onClick={onContinue} autoFocus>
+            Run again →
+          </button>
+        </div>
       </div>
     </div>
   );

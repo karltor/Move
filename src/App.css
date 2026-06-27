@@ -914,6 +914,24 @@
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
+.results-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+.results-upgrades {
+  font-size: 16px;
+  font-weight: 800;
+  color: #2d3748;
+  background: #edf2f7;
+  border: 2px solid #cbd5e0;
+  border-radius: 12px;
+  padding: 12px 24px;
+  cursor: pointer;
+}
+.results-upgrades:hover {
+  border-color: #38b2ac;
+}
 .results-continue {
   font-size: 17px;
   font-weight: 800;
@@ -921,9 +939,31 @@
   background: linear-gradient(180deg, #f6ad55, #dd6b20);
   border: none;
   border-radius: 12px;
-  padding: 12px 40px;
+  padding: 12px 32px;
   cursor: pointer;
 }
+
+/* --- weather chip --- */
+.weather-chip {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(13, 22, 41, 0.82);
+  color: #e2e8f0;
+  border-radius: 999px;
+  padding: 7px 16px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+  max-width: 80%;
+}
+.weather-emoji { font-size: 18px; }
+.weather-name { font-weight: 800; }
+.weather-blurb { font-size: 12px; color: #9fb0d0; }
+.weather-resist { font-size: 11px; color: #4fd1c5; font-weight: 700; }
 
 /* --- intro story --- */
 .intro-backdrop {
@@ -1116,7 +1156,7 @@
   stroke-width: 2.5;
 }
 .tt-cat-name {
-  font-size: 13px;
+  font-size: 17px;
   font-weight: 800;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1131,12 +1171,12 @@
 }
 .tt-node-name {
   fill: #cdd9ee;
-  font-size: 12px;
+  font-size: 16px;
   font-weight: 700;
 }
 .tt-node-rank {
   fill: #7c8db0;
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
 }

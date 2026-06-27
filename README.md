@@ -15,9 +15,11 @@ Built with **Vite + TypeScript + React** (UI), **PixiJS** (canvas), and
 
 1. **Run** (hold Space / hold on the canvas). Two pools govern a run, like real
    physiology: a finite **energy reserve** (only depletes — when it's gone the
-   run **ends** and a results screen appears) and a fast **stamina** burst pool
-   that exerting spends and easing-off refills from the reserve. No timer; no
-   infinite stamina — pace your breath to go far.
+   runner **collapses**, the run ends, and a results screen appears) and a fast
+   **stamina** burst pool that exerting spends and easing-off refills from the
+   reserve. No timer; no infinite stamina — pace your breath to go far. Each run
+   rolls a **weather** condition (rain, heatwave, tailwind, mud…) that shifts the
+   stats; the *Acclimatization* nodes dampen its effect.
 2. The **results screen** breaks down the run (distance, top/avg speed in m/s,
    duration) and the **lump-sum** currencies it earned: 💰 Grants (distance),
    🏃 Pace (avg speed), ⚡ Kinetic Energy (½·m·v²), 🌀 Momentum (m·v). KE and
@@ -103,10 +105,11 @@ exclusive (switching is a respec). So content is **data, not code**:
   costs, prerequisites, stat aggregation (per-rank), progress counts, and which
   SVG art layers to draw for the current ranks.
 - **`src/game/PixiStage.tsx`** — the canvas. For the `walker` it builds a
-  procedural skeleton (swinging limbs, speed-scaled stride, bob) and composites
-  the **equipped SVG layers** (torso, headgear, shoes, backpack) onto it,
-  rebuilding when the loadout changes. Following camera; speed lines; cheering
-  crowd; rough ground.
+  detailed multi-part **SVG rig** (jointed two-segment legs/arms with knees &
+  elbows, detailed head + coat) and composites the ranked SVG layers (torso,
+  headgear, shoes, backpack) onto it, rebuilding when ranks change. Speed-scaled
+  gait, following camera, speed lines, cheering crowd, and a **collapse
+  animation** when energy runs out. `src/data/weather.ts` rolls per-run weather.
 - **`src/store/gameStore.ts`** — central Zustand store (wallet, `ranks`,
   best/run counters, auto-run, `introSeen`, `lastActive`, `saveVersion`)
   persisted to `localStorage`, with a **real `migrate`** (v1 → … → v5) and

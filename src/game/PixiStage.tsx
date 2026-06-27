@@ -12,10 +12,27 @@ import {
 } from '../sim/ride';
 import { resolveArt, type Ranks } from './tree';
 
-const PPU = 20; // pixels per simulation metre
+// Base body parts (always drawn; equipped art overrides torso / adds shoes etc.)
+import headSvg from '../assets/char/sci_head.svg';
+import thighSvg from '../assets/char/sci_thigh.svg';
+import shinSvg from '../assets/char/sci_shin.svg';
+import uparmSvg from '../assets/char/sci_uparm.svg';
+import forearmSvg from '../assets/char/sci_forearm.svg';
+import torsoBaseSvg from '../assets/char/torso0.svg';
+
+const PPU = 20;
 const GROUND_FROM_BOTTOM = 96;
 const CAMERA_LEFT_FRAC = 0.2;
 const STEP_MS = 1000 * DT;
+const COLLAPSE_MS = 750;
+
+// Rig anatomy (px, in feet-origin space; up is negative y).
+const HIP_Y = -62;
+const THIGH_LEN = 28;
+const SHOULDER_Y = -104;
+const UPARM_LEN = 24;
+
+const BASE_PARTS = [headSvg, thighSvg, shinSvg, uparmSvg, forearmSvg, torsoBaseSvg];
 
 export interface StageHandle {
   startRun: (
@@ -35,16 +52,18 @@ interface Props {
   ranks: Ranks;
 }
 
+interface Limb {
+  upper: Container; // rotates at proximal joint (hip / shoulder)
+  lower: Container; // rotates at distal joint (knee / elbow)
+}
 interface WalkerRig {
-  legFront: Container;
-  legBack: Container;
-  arm: Container;
+  legFront: Limb;
+  legBack: Limb;
+  armFront: Limb;
+  armBack: Limb;
 }
 
-export const PixiStage = forwardRef<StageHandle, Props>(function PixiStage(
-  { object, ranks },
-  ref,
-) {
+export const PixiStage = forwardRef<StageHandle, Props>(function PixiStage({ object, ranks }, ref) {
   const hostRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
   const worldRef = useRef<Container | null>(null);
@@ -59,6 +78,8 @@ export const PixiStage = forwardRef<StageHandle, Props>(function PixiStage(
     policy: RidePolicy;
     state: RideState;
     acc: number;
+    phase: 'running' | 'collapsing';
+    collapseMs: number;
     onTick: (s: RideState, st: RideStats) => void;
     onComplete: (s: RideState, st: RideStats) => void;
   } | null>(null);
@@ -69,7 +90,6 @@ export const PixiStage = forwardRef<StageHandle, Props>(function PixiStage(
   useEffect(() => {
     let destroyed = false;
     const app = new Application();
-
     (async () => {
       await app.init({
         background: '#cdeafe',
@@ -175,87 +195,105 @@ export const PixiStage = forwardRef<StageHandle, Props>(function PixiStage(
     if (!fg) return;
     const { object: obj, ranks: rk } = latest.current;
     const layers = resolveArt(obj, rk);
-    const urls = [...new Set(layers.map((l) => l.svg))];
-    const textures = urls.length ? await Assets.load(urls) : {};
+    const urls = [...new Set([...BASE_PARTS, ...layers.map((l) => l.svg)])];
+    const textures = await Assets.load(urls);
     if (!fgRef.current) return;
-
-    const texFor = (layerId: string): Texture | null => {
+    const art = (layerId: string): Texture | null => {
       const l = layers.find((x) => x.layer === layerId);
       return l ? textures[l.svg] : null;
     };
 
     fg.removeChildren();
-    walkerRef.current = obj.renderKind === 'walker' ? buildWalker(fg, texFor) : null;
+    walkerRef.current = obj.renderKind === 'walker' ? buildWalker(fg, textures, art) : null;
   }
 
-  // Procedural skeleton + equipped SVG skins. Origin at the feet.
-  function buildWalker(fg: Container, texFor: (id: string) => Texture | null): WalkerRig {
-    const root = new Container();
-    fg.addChild(root);
+  function buildWalker(
+    fg: Container,
+    tex: Record<string, Texture>,
+    art: (id: string) => Texture | null,
+  ): WalkerRig {
+    const shoeTex = art('shoe');
+    const torsoTex = art('torso') ?? tex[torsoBaseSvg];
+    const headgearTex = art('headgear');
+    const backTex = art('back');
 
-    const shoeTex = texFor('shoe');
-    const makeLeg = (color: number, shadeShoe: boolean) => {
-      const leg = new Container();
-      const shin = new Graphics();
-      shin.roundRect(-4, 0, 8, 46, 4).fill(color);
-      leg.addChild(shin);
+    const makeLeg = (hipX: number, behind: boolean): Limb => {
+      const upper = new Container();
+      upper.position.set(hipX, HIP_Y);
+      const thigh = new Sprite(tex[thighSvg]);
+      thigh.anchor.set(0.5, 0);
+      upper.addChild(thigh);
+      const lower = new Container();
+      lower.position.set(0, THIGH_LEN);
+      upper.addChild(lower);
+      const shin = new Sprite(tex[shinSvg]);
+      shin.anchor.set(0.35, 0);
+      lower.addChild(shin);
       if (shoeTex) {
         const shoe = new Sprite(shoeTex);
-        shoe.anchor.set(0.34, 0.2);
-        shoe.position.set(0, 41);
-        if (shadeShoe) shoe.tint = 0xdedede;
-        leg.addChild(shoe);
+        shoe.anchor.set(0.32, 0.2);
+        shoe.position.set(4, 26);
+        lower.addChild(shoe);
       }
-      return leg;
+      if (behind) {
+        thigh.tint = 0xb9c1cc;
+        shin.tint = 0xb9c1cc;
+      }
+      return { upper, lower };
     };
 
-    const legBack = makeLeg(0x34495e, true);
-    legBack.position.set(-2, -46);
-    root.addChild(legBack);
+    const makeArm = (shX: number, behind: boolean): Limb => {
+      const upper = new Container();
+      upper.position.set(shX, SHOULDER_Y);
+      const ua = new Sprite(tex[uparmSvg]);
+      ua.anchor.set(0.5, 0);
+      upper.addChild(ua);
+      const lower = new Container();
+      lower.position.set(0, UPARM_LEN);
+      upper.addChild(lower);
+      const fa = new Sprite(tex[forearmSvg]);
+      fa.anchor.set(0.5, 0);
+      lower.addChild(fa);
+      if (behind) {
+        ua.tint = 0xcfd6df;
+        fa.tint = 0xd8be97;
+      }
+      return { upper, lower };
+    };
 
-    const backTex = texFor('back');
+    const legBack = makeLeg(-3, true);
+    const armBack = makeArm(-2, true);
+    fg.addChild(legBack.upper, armBack.upper);
+
     if (backTex) {
       const back = new Sprite(backTex);
       back.anchor.set(0.5, 0.5);
-      back.position.set(-12, -74);
-      root.addChild(back);
+      back.position.set(-10, -86);
+      fg.addChild(back);
     }
 
-    const torsoTex = texFor('torso');
-    if (torsoTex) {
-      const torso = new Sprite(torsoTex);
-      torso.anchor.set(0.5, 0.5);
-      torso.position.set(0, -70);
-      root.addChild(torso);
-    }
+    const torso = new Sprite(torsoTex);
+    torso.anchor.set(0.5, 0);
+    torso.position.set(0, SHOULDER_Y);
+    fg.addChild(torso);
 
-    // Head (face) is always procedural; headgear is an SVG overlay.
-    const head = new Graphics();
-    head.circle(0, -104, 11).fill('#f1c27d');
-    head.roundRect(-12, -114, 24, 9, 4).fill('#5b4636'); // hair
-    head.rect(-4, -95, 8, 9).fill('#f1c27d'); // neck
-    root.addChild(head);
+    const head = new Sprite(tex[headSvg]);
+    head.anchor.set(0.5, 0.93);
+    head.position.set(1, SHOULDER_Y + 2);
+    fg.addChild(head);
 
-    const headgearTex = texFor('headgear');
     if (headgearTex) {
       const hg = new Sprite(headgearTex);
-      hg.anchor.set(0.5, 0.5);
-      hg.position.set(1, -105);
-      root.addChild(hg);
+      hg.anchor.set(0.5, 0.55);
+      hg.position.set(2, SHOULDER_Y - 26);
+      fg.addChild(hg);
     }
 
-    const arm = new Container();
-    const armG = new Graphics();
-    armG.roundRect(-3.5, 0, 7, 32, 3.5).fill('#edf2f7');
-    arm.addChild(armG);
-    arm.position.set(4, -88);
-    root.addChild(arm);
+    const armFront = makeArm(5, false);
+    const legFront = makeLeg(4, false);
+    fg.addChild(armFront.upper, legFront.upper);
 
-    const legFront = makeLeg(0x3d566e, false);
-    legFront.position.set(3, -46);
-    root.addChild(legFront);
-
-    return { legFront, legBack, arm };
+    return { legFront, legBack, armFront, armBack };
   }
 
   function placeAtStart() {
@@ -265,6 +303,7 @@ export const PixiStage = forwardRef<StageHandle, Props>(function PixiStage(
     if (!app || !world || !fg) return;
     fg.x = 0;
     fg.y = groundY(app);
+    fg.rotation = 0;
     world.x = app.screen.width * CAMERA_LEFT_FRAC;
     world.y = 0;
     if (bgRef.current) bgRef.current.x = world.x * 0.45;
@@ -279,9 +318,13 @@ export const PixiStage = forwardRef<StageHandle, Props>(function PixiStage(
     const run = runRef.current;
     if (!app || !world || !fg) return;
 
-    let state: RideState | null = run ? run.state : null;
+    if (!run) {
+      idlePose(app, fg, deltaMS);
+      drawSpeedLines(app, null);
+      return;
+    }
 
-    if (run) {
+    if (run.phase === 'running') {
       run.acc += Math.min(deltaMS, 250);
       let finished = false;
       while (run.acc >= STEP_MS) {
@@ -292,48 +335,67 @@ export const PixiStage = forwardRef<StageHandle, Props>(function PixiStage(
           break;
         }
       }
-      state = run.state;
-
       const screenX = run.state.x * PPU;
       fg.x = screenX;
       world.x = app.screen.width * CAMERA_LEFT_FRAC - screenX;
       if (bgRef.current) bgRef.current.x = world.x * 0.45;
-
       run.onTick(run.state, run.stats);
-
+      animateWalker(app, fg, run.state.v, deltaMS);
+      drawSpeedLines(app, run.state);
       if (finished) {
-        const done = run.onComplete;
-        const final = run.state;
-        const stats = run.stats;
+        run.phase = 'collapsing';
+        run.collapseMs = 0;
+      }
+    } else {
+      // collapsing: a quick faceplant, then finish.
+      run.collapseMs += deltaMS;
+      const t = Math.min(1, run.collapseMs / COLLAPSE_MS);
+      const e = 1 - Math.pow(1 - t, 3);
+      animateCollapse(app, fg, e);
+      drawSpeedLines(app, null);
+      if (t >= 1) {
+        const done = run.onComplete, final = run.state, stats = run.stats;
         runRef.current = null;
         done(final, stats);
       }
     }
-
-    animateWalker(app, fg, state, deltaMS);
-    drawSpeedLines(app, state);
   }
 
-  function animateWalker(
-    app: Application,
-    fg: Container,
-    state: RideState | null,
-    deltaMS: number,
-  ) {
+  function setLimb(limb: Limb, upperRot: number, lowerRot: number) {
+    limb.upper.rotation = upperRot;
+    limb.lower.rotation = lowerRot;
+  }
+
+  function animateWalker(app: Application, fg: Container, v: number, deltaMS: number) {
     const rig = walkerRef.current;
-    const v = state ? state.v : 0;
-    phaseRef.current += (2.2 + v * 0.95) * (deltaMS / 1000);
+    phaseRef.current += (2.0 + v * 0.9) * (deltaMS / 1000);
     const ph = phaseRef.current;
-    const swing = Math.min(0.9, 0.28 + v * 0.06);
+    const swing = Math.min(0.7, 0.05 + v * 0.06);
     if (rig) {
-      rig.legFront.rotation = Math.sin(ph) * swing;
-      rig.legBack.rotation = Math.sin(ph + Math.PI) * swing;
-      rig.arm.rotation = Math.sin(ph + Math.PI) * swing * 0.8;
-      fg.y = groundY(app) - Math.abs(Math.sin(ph)) * (2 + v * 0.25);
-      fg.rotation = -Math.min(0.12, v * 0.012);
-    } else {
-      fg.y = groundY(app);
+      setLimb(rig.legFront, Math.sin(ph) * swing, Math.max(0, Math.sin(ph + 2.2)) * swing * 1.7);
+      setLimb(rig.legBack, Math.sin(ph + Math.PI) * swing, Math.max(0, Math.sin(ph + Math.PI + 2.2)) * swing * 1.7);
+      setLimb(rig.armFront, Math.sin(ph + Math.PI) * swing * 0.8, 0.25 + Math.max(0, Math.sin(ph)) * 0.3);
+      setLimb(rig.armBack, Math.sin(ph) * swing * 0.8, 0.25 + Math.max(0, Math.sin(ph + Math.PI)) * 0.3);
     }
+    fg.y = groundY(app) - Math.abs(Math.sin(ph)) * (1.5 + v * 0.18);
+    fg.rotation = Math.min(0.1, v * 0.01);
+  }
+
+  function idlePose(app: Application, fg: Container, deltaMS: number) {
+    animateWalker(app, fg, 0, deltaMS); // gentle idle sway
+  }
+
+  function animateCollapse(app: Application, fg: Container, e: number) {
+    const rig = walkerRef.current;
+    if (rig) {
+      // limbs go limp / splay
+      setLimb(rig.legFront, 0.5 * e, 0.2 * e);
+      setLimb(rig.legBack, -0.5 * e, 0.9 * e);
+      setLimb(rig.armFront, 1.2 * e, 0.6 * e);
+      setLimb(rig.armBack, -0.8 * e, 0.4 * e);
+    }
+    fg.rotation = 1.5 * e; // faceplant forward
+    fg.y = groundY(app) + 4 * e;
   }
 
   function drawSpeedLines(app: Application, state: RideState | null) {
@@ -361,6 +423,8 @@ export const PixiStage = forwardRef<StageHandle, Props>(function PixiStage(
         policy,
         state: initRideState(stats),
         acc: 0,
+        phase: 'running',
+        collapseMs: 0,
         onTick: handlers.onTick,
         onComplete: handlers.onComplete,
       };
