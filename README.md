@@ -58,17 +58,23 @@ npm run preview    # serve the built dist/ with the Pages base path
 
 ## Deploying to GitHub Pages
 
-A workflow at `.github/workflows/deploy.yml` builds and deploys `dist/` on every
-push to `main` using the official `upload-pages-artifact` / `deploy-pages`
-actions.
+A workflow at `.github/workflows/deploy.yml` builds the site on every push to
+`main` and publishes the **compiled** `dist/` to a **`gh-pages`** branch. That
+branch contains real HTML/JS (no `src/main.tsx`), so Pages serves a working app.
 
-**One manual step (only needed once):** in the GitHub repo, go to
-**Settings → Pages → Build and deployment → Source** and set it to
-**"GitHub Actions"**. After the next push to `main`, the game will be live at:
+**One manual step (only needed once):** after the workflow has run at least once
+(so the `gh-pages` branch exists), go to
+**Settings → Pages → Build and deployment**, set **Source = "Deploy from a
+branch"**, **Branch = `gh-pages`**, folder **`/ (root)`**, and Save. The game
+will be live at:
 
 ```
 https://<your-username>.github.io/Move/
 ```
+
+> Why a branch and not "GitHub Actions" source? Serving from a branch that holds
+> the built output is unambiguous: if you ever see a `GET /src/main.tsx 404`, it
+> means Pages is serving un-built source — the `gh-pages` branch can't do that.
 
 If you rename the repository, update the one `base` string in
 `vite.config.ts` (`/Move/`) to match the new repo name.
