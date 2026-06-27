@@ -1,23 +1,16 @@
 // ---------------------------------------------------------------------------
-// DATA-DRIVEN BUILD MODEL
+// DATA-DRIVEN TECH-TREE MODEL
 // ---------------------------------------------------------------------------
-// This is a BUILD game, not a node-buster. Content is data:
-//   • An object has SLOTS (Footwear, Bodywear, …). Each slot offers several
-//     tiered UPGRADES. You equip ONE upgrade per slot — that loadout is your
-//     "build".
-//   • Grants (the main currency) are SPENT to UNLOCK an upgrade permanently.
-//   • The other currencies (Pace/Kinetic/Momentum) are RESERVED to keep an
-//     upgrade EQUIPPED, and refunded when you unequip — a finite loadout budget
-//     that forces real build choices. Because play-styles earn different
-//     currencies, your build is shaped by how you play.
-//   • Equipping changes STATS and the character's layered SVG ART.
+// The upgrade system is a research tree: categories of NODES, each node has
+// 1..N RANKS bought with currencies. Some nodes are single unlocks (maxRanks
+// 1), others scale (e.g. weight -5/-10/-15%). PREREQUISITES gate nodes. You
+// can never max everything, so what you specialise into is your build. Certain
+// nodes also swap the character's SVG art when ranked.
 //
-// EXTENSION POINT: a new object (bicycle, …) is a new data file with its own
-// slots/upgrades/art + a renderKind; relativistic regimes add new stats. The
-// sim, store and UI are generic over this model.
+// EXTENSION POINT: add categories/nodes here (the tree is pure data). A new
+// object (bicycle, …) is a new data file with its own categories + renderKind.
 // ---------------------------------------------------------------------------
 
-/** Stats the simulation understands (see `src/sim/ride.ts`). */
 export type StatKey =
   | 'walkPower'
   | 'runPower'
@@ -32,52 +25,53 @@ export type StatKey =
   | 'topSpeed'
   | 'assist';
 
-/** Currencies derived from a run's metrics (see `src/data/currencies.ts`). */
-export type CurrencyId = 'grants' | 'pace' | 'kinetic' | 'momentum';
-
-/** A cost expressed in one or more currencies. */
+export type CurrencyId = 'research' | 'pace' | 'kinetic' | 'momentum';
 export type Cost = Partial<Record<CurrencyId, number>>;
 
+/** A stat modifier applied PER allocated rank (add: +add·rank; mul: mul^rank). */
 export interface StatMod {
   stat: StatKey;
   add?: number;
   mul?: number;
 }
 
-/** A character art layer this upgrade contributes when equipped. `layer` is a
- *  renderer-known attachment id (e.g. 'torso', 'shoe', 'headgear', 'back'). */
-export interface UpgradeArt {
-  layer: string;
-  svg: string;
+/** Character art a node contributes once it reaches `minRank`. Highest
+ *  satisfied entry wins for its `layer`. */
+export interface NodeArt {
+  layer: string; // renderer attachment id: 'shoe' | 'torso' | 'headgear' | 'back'
+  ranks: { minRank: number; svg: string }[];
 }
 
-export interface Upgrade {
+export interface TreeNode {
   id: string;
   name: string;
   desc: string;
-  /** 1-based tier within its slot. Unlocking tier N requires tier N-1 unlocked. */
-  tier: number;
-  /** Small SVG symbol for the board tile. */
   icon: string;
-  /** One-time GRANTS (mainly) spend to unlock. Empty = free base tier. */
-  unlockCost: Cost;
-  /** Currencies RESERVED while equipped (refunded on unequip). Empty = free. */
-  equipCost: Cost;
-  /** Stat modifiers applied while equipped. */
+  /** 1 = single unlock; >1 = multi-rank. */
+  maxRanks: number;
+  /** Cost of rank 1. Each further rank multiplies by `costGrowth`. */
+  cost: Cost;
+  costGrowth?: number; // default 1.7
+  /** Stat mods applied per allocated rank. */
   mods: StatMod[];
-  /** Optional character art shown while equipped. */
-  art?: UpgradeArt;
+  /** Node ids that must have >=1 rank before this node can be started. */
+  prereqs: string[];
+  /** Grid position within its category (col, row from the header). */
+  col: number;
+  row: number;
+  art?: NodeArt;
+  /** Free, auto-allocated category entry node (rendered as the header anchor). */
+  root?: boolean;
 }
 
-export interface BuildSlot {
+export interface TreeCategory {
   id: string;
   name: string;
-  /** Small SVG symbol for the slot header. */
+  color: string;
   icon: string;
-  /** Character layer draw order (lower = further back). */
-  z: number;
-  /** Tier-ordered upgrades; the first (tier 1, free) is the default equip. */
-  upgrades: Upgrade[];
+  /** Anchor in tree units; nodes lay out relative to it by col/row. */
+  pos: { x: number; y: number };
+  nodes: TreeNode[];
 }
 
 export type RenderKind = 'walker' | 'layers';
@@ -87,6 +81,5 @@ export interface GameObjectDef {
   name: string;
   renderKind: RenderKind;
   baseStats: Record<StatKey, number>;
-  /** The build board. */
-  slots: BuildSlot[];
+  categories: TreeCategory[];
 }

@@ -26,9 +26,9 @@ export function getObject(id: string): GameObjectDef {
 
 export type {
   GameObjectDef,
-  BuildSlot,
-  Upgrade,
-  UpgradeArt,
+  TreeCategory,
+  TreeNode,
+  NodeArt,
   Cost,
   StatKey,
   StatMod,

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getObject } from './data';
 import { useGameStore } from './store/gameStore';
-import { aggregateStats, reservedTotals } from './game/builds';
+import { aggregateStats } from './game/tree';
 import {
   autoPilot,
   metricsFor,
@@ -14,7 +14,7 @@ import type { RunMetrics } from './data/currencies';
 import type { CurrencyId } from './data/types';
 import { Hud } from './ui/Hud';
 import { RideBars } from './ui/RideBars';
-import { Board } from './ui/Board';
+import { TechTree } from './ui/TechTree';
 import { Results } from './ui/Results';
 import { WelcomeBack } from './ui/WelcomeBack';
 import { Intro } from './ui/Intro';
@@ -29,24 +29,22 @@ interface ResultState {
 export default function App() {
   const objectId = useGameStore((s) => s.objectId);
   const wallet = useGameStore((s) => s.wallet);
-  const unlocked = useGameStore((s) => s.unlocked);
-  const equipped = useGameStore((s) => s.equipped);
+  const ranks = useGameStore((s) => s.ranks);
   const bestDistance = useGameStore((s) => s.bestDistance);
   const runCount = useGameStore((s) => s.runCount);
   const autoRun = useGameStore((s) => s.autoRun);
   const pendingOffline = useGameStore((s) => s.pendingOffline);
   const introSeen = useGameStore((s) => s.introSeen);
   const addRunRewards = useGameStore((s) => s.addRunRewards);
-  const unlock = useGameStore((s) => s.unlock);
-  const equip = useGameStore((s) => s.equip);
+  const buyRank = useGameStore((s) => s.buyRank);
+  const resetTree = useGameStore((s) => s.resetTree);
   const setAutoRun = useGameStore((s) => s.setAutoRun);
   const claimOffline = useGameStore((s) => s.claimOffline);
   const touchActive = useGameStore((s) => s.touchActive);
   const setIntroSeen = useGameStore((s) => s.setIntroSeen);
 
   const object = getObject(objectId);
-  const stats = useMemo(() => aggregateStats(object, equipped), [object, equipped]);
-  const reserved = useMemo(() => reservedTotals(object, equipped), [object, equipped]);
+  const stats = useMemo(() => aggregateStats(object, ranks), [object, ranks]);
 
   const stageRef = useRef<StageHandle>(null);
   const heldRef = useRef(false);
@@ -59,7 +57,7 @@ export default function App() {
 
   const [running, setRunning] = useState(false);
   const [live, setLive] = useState<RideState | null>(null);
-  const [boardOpen, setBoardOpen] = useState(false);
+  const [treeOpen, setTreeOpen] = useState(false);
   const [results, setResults] = useState<ResultState | null>(null);
 
   const loopPolicy = useRef<RidePolicy>((s, st) => heldRef.current || autoPilot(s, st)).current;
@@ -76,7 +74,7 @@ export default function App() {
       const stage = stageRef.current;
       if (!stage) return;
       const st = useGameStore.getState();
-      const runStats: RideStats = aggregateStats(getObject(st.objectId), st.equipped);
+      const runStats: RideStats = aggregateStats(getObject(st.objectId), st.ranks);
       runningRef.current = true;
       setRunning(true);
       setLive(null);
@@ -87,9 +85,7 @@ export default function App() {
         onTick,
         onComplete: (final, finalStats) => {
           const metrics: RunMetrics = metricsFor(finalStats, final);
-          const activeFrac = totalTicks.current
-            ? activeTicks.current / totalTicks.current
-            : 0;
+          const activeFrac = totalTicks.current ? activeTicks.current / totalTicks.current : 0;
           const mult = 1 + Math.min(1, activeFrac) * 1.5;
           const awards = addRunRewards(metrics, mult);
           setLive(final);
@@ -130,7 +126,7 @@ export default function App() {
   }, [beginRun, loopPolicy, introSeen]);
 
   const blockedRef = useRef(false);
-  blockedRef.current = boardOpen || !introSeen || !!pendingOffline || !!results;
+  blockedRef.current = treeOpen || !introSeen || !!pendingOffline || !!results;
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -167,13 +163,7 @@ export default function App() {
   return (
     <div className="app">
       <div className="stage-col">
-        <Hud
-          wallet={wallet}
-          reserved={reserved}
-          bestDistance={bestDistance}
-          runCount={runCount}
-          liveDistance={liveDistance}
-        />
+        <Hud wallet={wallet} bestDistance={bestDistance} runCount={runCount} liveDistance={liveDistance} />
 
         <div
           className="stage-wrap"
@@ -185,7 +175,7 @@ export default function App() {
           onPointerUp={() => (heldRef.current = false)}
           onPointerLeave={() => (heldRef.current = false)}
         >
-          <PixiStage ref={stageRef} object={object} equipped={equipped} />
+          <PixiStage ref={stageRef} object={object} ranks={ranks} />
           <RideBars state={live} stats={stats} running={running} />
           {!running && !results && (
             <div className="stage-hint">Hold to run · ease off to refill stamina · energy ends the run</div>
@@ -201,9 +191,7 @@ export default function App() {
           >
             {running ? 'Running…' : '🏃 Run! (hold Space)'}
           </button>
-          <button className="lab-btn" onClick={() => setBoardOpen(true)}>
-            🔧 Build
-          </button>
+          <button className="lab-btn" onClick={() => setTreeOpen(true)}>🔬 Upgrades</button>
           <label className="autorun-toggle">
             <input type="checkbox" checked={autoRun} onChange={toggleAutoRun} />
             <span>Auto-run</span>
@@ -211,35 +199,27 @@ export default function App() {
         </div>
       </div>
 
-      {boardOpen && (
-        <div className="modal-backdrop board-backdrop" onClick={() => setBoardOpen(false)}>
-          <div className="board-modal" onClick={(e) => e.stopPropagation()}>
-            <Board
+      {treeOpen && (
+        <div className="modal-backdrop tree-backdrop" onClick={() => setTreeOpen(false)}>
+          <div className="tt-modal" onClick={(e) => e.stopPropagation()}>
+            <TechTree
               object={object}
               wallet={wallet}
-              unlocked={unlocked}
-              equipped={equipped}
-              onUnlock={unlock}
-              onEquip={equip}
-              onClose={() => setBoardOpen(false)}
+              ranks={ranks}
+              onBuy={buyRank}
+              onReset={resetTree}
+              onClose={() => setTreeOpen(false)}
             />
           </div>
         </div>
       )}
 
-      {results && !boardOpen && (
-        <Results
-          metrics={results.metrics}
-          awards={results.awards}
-          mult={results.mult}
-          onContinue={() => setResults(null)}
-        />
+      {results && !treeOpen && (
+        <Results metrics={results.metrics} awards={results.awards} mult={results.mult} onContinue={() => setResults(null)} />
       )}
 
       {!introSeen && <Intro onDone={setIntroSeen} />}
-      {introSeen && pendingOffline && (
-        <WelcomeBack report={pendingOffline} onClaim={claimOffline} />
-      )}
+      {introSeen && pendingOffline && <WelcomeBack report={pendingOffline} onClaim={claimOffline} />}
     </div>
   );
 }

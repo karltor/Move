@@ -10,7 +10,7 @@ import {
   type RideState,
   type RidePolicy,
 } from '../sim/ride';
-import { resolveArt, type Equipped } from './builds';
+import { resolveArt, type Ranks } from './tree';
 
 const PPU = 20; // pixels per simulation metre
 const GROUND_FROM_BOTTOM = 96;
@@ -32,7 +32,7 @@ export interface StageHandle {
 
 interface Props {
   object: GameObjectDef;
-  equipped: Equipped;
+  ranks: Ranks;
 }
 
 interface WalkerRig {
@@ -42,7 +42,7 @@ interface WalkerRig {
 }
 
 export const PixiStage = forwardRef<StageHandle, Props>(function PixiStage(
-  { object, equipped },
+  { object, ranks },
   ref,
 ) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -63,8 +63,8 @@ export const PixiStage = forwardRef<StageHandle, Props>(function PixiStage(
     onComplete: (s: RideState, st: RideStats) => void;
   } | null>(null);
 
-  const latest = useRef({ object, equipped });
-  latest.current = { object, equipped };
+  const latest = useRef({ object, ranks });
+  latest.current = { object, ranks };
 
   useEffect(() => {
     let destroyed = false;
@@ -126,7 +126,7 @@ export const PixiStage = forwardRef<StageHandle, Props>(function PixiStage(
   useEffect(() => {
     buildCharacter();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [equipped, object]);
+  }, [ranks, object]);
 
   function groundY(app: Application): number {
     return app.screen.height - GROUND_FROM_BOTTOM;
@@ -173,8 +173,8 @@ export const PixiStage = forwardRef<StageHandle, Props>(function PixiStage(
   async function buildCharacter() {
     const fg = fgRef.current;
     if (!fg) return;
-    const { object: obj, equipped: eq } = latest.current;
-    const layers = resolveArt(obj, eq);
+    const { object: obj, ranks: rk } = latest.current;
+    const layers = resolveArt(obj, rk);
     const urls = [...new Set(layers.map((l) => l.svg))];
     const textures = urls.length ? await Assets.load(urls) : {};
     if (!fgRef.current) return;
