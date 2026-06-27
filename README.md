@@ -119,6 +119,18 @@ exclusive (switching is a respec). So content is **data, not code**:
   rank-up), the end-of-run **`Results`** screen, the `Intro` story, and
   `WelcomeBack`.
 
+### Tuning (`src/config.ts`)
+
+One file centralises the knobs you'll want to tweak: physics timestep and the
+**skill mechanic** (`freshness` — holding continuously makes strides weaker, so
+rhythmic *pulsing* beats mashing), run-end/collapse timing, render scale and
+gait params (incl. a `gait.dir` flip if the run cycle ever looks reversed),
+the tree **cost-growth exponent** and default zoom, the active-play bonus, and
+the offline-earning rate, plus UI hint text. Per-object physics (a specific
+object's friction/drag/mass/power/energy) are its `baseStats` in its data file;
+upgrade values/costs are the node definitions there; weather lives in
+`src/data/weather.ts`.
+
 ### Out of scope (for now)
 
 Electron/Steam, the bicycle and later vehicles, relativistic motion, prestige

@@ -26,7 +26,7 @@ const categories: TreeCategory[] = [
     name: 'Footwear',
     color: '#f6ad55',
     icon: shoe1,
-    pos: { x: 0, y: 0 },
+    band: 'top',
     nodes: [
       { id: 'fw_root', name: 'Basic Shoes', desc: 'Something on your feet.', icon: shoe1, root: true, maxRanks: 1, cost: {}, mods: [], prereqs: [], col: 1, row: 0 },
       { id: 'fw_light', name: 'Lightweight Materials', desc: 'Shed shoe weight each rank.', icon: shoe1, maxRanks: 3, cost: { research: 60 }, mods: [{ stat: 'weight', mul: 0.97 }], prereqs: ['fw_root'], col: 0, row: 1,
@@ -41,7 +41,7 @@ const categories: TreeCategory[] = [
     name: 'Outerwear',
     color: '#fc8181',
     icon: torso1,
-    pos: { x: 5, y: 0 },
+    band: 'top',
     nodes: [
       { id: 'ow_root', name: 'Lab Coat', desc: 'Flaps heroically.', icon: torso1, root: true, maxRanks: 1, cost: {}, mods: [], prereqs: [], col: 1, row: 0 },
       { id: 'ow_aero', name: 'Aerodynamics', desc: 'Cut drag each rank.', icon: torso1, maxRanks: 3, cost: { research: 80 }, mods: [{ stat: 'drag', mul: 0.9 }], prereqs: ['ow_root'], col: 1, row: 1,
@@ -55,7 +55,7 @@ const categories: TreeCategory[] = [
     name: 'Conditioning',
     color: '#68d391',
     icon: iconClipboard,
-    pos: { x: 10, y: 0 },
+    band: 'top',
     nodes: [
       { id: 'co_root', name: 'Stamina I', desc: 'You jog on weekends.', icon: iconClipboard, root: true, maxRanks: 1, cost: {}, mods: [], prereqs: [], col: 1, row: 0 },
       { id: 'co_cardio', name: 'Cardio Capacity', desc: 'Deeper energy reserve.', icon: iconDumbbell, maxRanks: 3, cost: { research: 70 }, mods: [{ stat: 'maxReserve', add: 35 }], prereqs: ['co_root'], col: 0, row: 1 },
@@ -69,7 +69,7 @@ const categories: TreeCategory[] = [
     name: 'Muscles & Strength',
     color: '#63b3ed',
     icon: iconDumbbell,
-    pos: { x: 15, y: 0 },
+    band: 'top',
     nodes: [
       { id: 'mu_root', name: 'Strength I', desc: 'Newfound gains.', icon: iconDumbbell, root: true, maxRanks: 1, cost: {}, mods: [], prereqs: [], col: 1, row: 0 },
       { id: 'mu_explosive', name: 'Explosive Power', desc: 'Big running power.', icon: iconDumbbell, maxRanks: 3, cost: { research: 90, kinetic: 12 }, mods: [{ stat: 'runPower', add: 18 }], prereqs: ['mu_root'], col: 0, row: 1 },
@@ -82,7 +82,7 @@ const categories: TreeCategory[] = [
     name: 'Brain & Mind',
     color: '#b794f4',
     icon: goggles,
-    pos: { x: 20, y: 0 },
+    band: 'top',
     nodes: [
       { id: 'br_root', name: 'Focus I', desc: 'Clearer thinking.', icon: goggles, root: true, maxRanks: 1, cost: {}, mods: [], prereqs: [], col: 1, row: 0 },
       { id: 'br_reaction', name: 'Reaction Time', desc: 'Raise your speed ceiling.', icon: goggles, maxRanks: 3, cost: { research: 100 }, mods: [{ stat: 'topSpeed', add: 0.5 }], prereqs: ['br_root'], col: 1, row: 1,
@@ -98,7 +98,7 @@ const categories: TreeCategory[] = [
     name: 'Technology',
     color: '#4fd1c5',
     icon: iconBattery,
-    pos: { x: 3, y: 8 },
+    band: 'bottom',
     nodes: [
       { id: 'te_root', name: 'Basic Research', desc: 'The lab hums to life.', icon: iconBattery, root: true, maxRanks: 1, cost: {}, mods: [], prereqs: [], col: 1, row: 0 },
       { id: 'te_exo', name: 'Exosuit Frame', desc: 'Powered assist; adds weight.', icon: iconBattery, maxRanks: 3, cost: { research: 260, momentum: 30 }, mods: [{ stat: 'assist', add: 28 }, { stat: 'weight', add: 6 }], prereqs: ['te_root'], col: 1, row: 1,
@@ -112,7 +112,7 @@ const categories: TreeCategory[] = [
     name: 'Survival',
     color: '#f6e05e',
     icon: iconNone,
-    pos: { x: 9, y: 8 },
+    band: 'bottom',
     nodes: [
       { id: 'su_root', name: 'Survival Basics', desc: 'Keep moving, keep breathing.', icon: iconNone, root: true, maxRanks: 1, cost: {}, mods: [], prereqs: [], col: 1, row: 0 },
       { id: 'su_pacing', name: 'Pacing', desc: 'Smarter effort each rank.', icon: iconClipboard, maxRanks: 3, cost: { research: 75 }, mods: [{ stat: 'staminaRefill', add: 2 }, { stat: 'runDrain', add: -1 }], prereqs: ['su_root'], col: 0, row: 1 },
@@ -126,7 +126,7 @@ const categories: TreeCategory[] = [
     name: 'Specialization',
     color: '#f6ad55',
     icon: helmet,
-    pos: { x: 15, y: 8 },
+    band: 'bottom',
     nodes: [
       { id: 'sp_root', name: 'Scientist Path', desc: 'Choose what you become.', icon: helmet, root: true, maxRanks: 1, cost: {}, mods: [], prereqs: [], col: 1, row: 0 },
       { id: 'sp_sprinter', name: 'Olympic Sprinter', desc: 'All-out speed specialist.', icon: shoe2, maxRanks: 1, cost: { research: 700, kinetic: 100 }, mods: [{ stat: 'runPower', add: 70 }, { stat: 'topSpeed', add: 4 }, { stat: 'maxReserve', add: -20 }], prereqs: ['sp_root', 'mu_peak'], col: 0, row: 1 },

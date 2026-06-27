@@ -70,8 +70,9 @@ export interface TreeCategory {
   name: string;
   color: string;
   icon: string;
-  /** Anchor in tree units; nodes lay out relative to it by col/row. */
-  pos: { x: number; y: number };
+  /** Which band around the central hub this category sits in. Nodes lay out
+   *  away from the hub (top band grows up, bottom band grows down). */
+  band: 'top' | 'bottom';
   nodes: TreeNode[];
 }
 

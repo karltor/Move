@@ -1155,6 +1155,26 @@
   stroke: #3f6ea5;
   stroke-width: 2.5;
 }
+.tt-spoke {
+  stroke-width: 2;
+  opacity: 0.35;
+  stroke-dasharray: 5 5;
+}
+.tt-hub circle {
+  fill: #11233f;
+  stroke: #4fd1c5;
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 10px rgba(79, 209, 197, 0.5));
+}
+.tt-hub text {
+  font-size: 30px;
+}
+.tt-hub-label {
+  font-size: 12px !important;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  fill: #8aa0c6;
+}
 .tt-cat-name {
   font-size: 17px;
   font-weight: 800;

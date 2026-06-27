@@ -1,20 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 56" width="48" height="56">
   <!-- neck -->
-  <rect x="20" y="43" width="9" height="13" fill="#e8b07d"/>
-  <!-- ear (back side) -->
-  <ellipse cx="13" cy="30" rx="3.6" ry="4.6" fill="#e8b07d"/>
-  <!-- head -->
-  <ellipse cx="25" cy="27" rx="15" ry="17" fill="#f1c27d"/>
-  <ellipse cx="25" cy="34" rx="13" ry="10" fill="#ecaa72" opacity="0.4"/>
-  <!-- hair -->
-  <path d="M10 26 Q10 5 27 6 Q42 7 40 26 Q39 17 32 14 Q29 8 21 10 Q13 12 13 23 Q12 28 12 33 Q9 30 10 26 Z" fill="#5b4636"/>
-  <path d="M10 26 Q10 5 27 6 Q34 6 38 13 Q31 10 24 12 Q15 14 14 24 Q13 28 12 33 Q9 30 10 26 Z" fill="#6b5443"/>
-  <!-- glasses -->
-  <circle cx="30" cy="26" r="5.2" fill="#d3ecff" stroke="#2d3748" stroke-width="2"/>
-  <circle cx="19.5" cy="27" r="4.2" fill="#d3ecff" stroke="#2d3748" stroke-width="2"/>
-  <line x1="24" y1="26" x2="25.5" y2="26" stroke="#2d3748" stroke-width="2"/>
-  <line x1="35" y1="25" x2="39" y2="24" stroke="#2d3748" stroke-width="1.8"/>
-  <!-- nose + mouth -->
-  <path d="M39 29 q3 2 -1 4.5" fill="none" stroke="#d4925f" stroke-width="1.6" stroke-linecap="round"/>
-  <path d="M33 37 q4 2.5 7 0.5" fill="none" stroke="#a85d4a" stroke-width="1.6" stroke-linecap="round"/>
+  <rect x="19" y="41" width="11" height="15" fill="#e8b07d"/>
+  <!-- head in right-facing profile (nose points right) -->
+  <path d="M16 12 Q26 4 35 13 Q40 18 39 23 L43 27 Q44 28.5 41 30 L38 31 Q40 34.5 36.5 35.5
+           Q38.5 39.5 33 41 Q25 45 18 42 Q12 38 12 27 Q12 16 16 12 Z" fill="#f1c27d"/>
+  <path d="M18 36 Q25 42 33 40 Q26 45 18 42 Q14 40 13 36 Z" fill="#ecaa72" opacity="0.5"/>
+  <!-- hair: crown + back of head -->
+  <path d="M14 15 Q25 3 36 12 Q30 7 22 9 Q14 11 13 23 Q12 29 13 34 Q9 27 10 18 Q11 14 14 15 Z" fill="#5b4636"/>
+  <path d="M14 15 Q25 3 36 12 Q31 8 24 10 Q16 12 15 22 Q14 16 16 15 Z" fill="#6b5443"/>
+  <!-- ear -->
+  <path d="M18 26 q-4 0.5 -4 4 q0 3.5 4 4 q1.5 -4 0 -8 z" fill="#e8b07d" stroke="#d99b6c" stroke-width="1"/>
+  <!-- eyebrow -->
+  <path d="M28 18.5 q4.5 -1.5 7.5 1" fill="none" stroke="#5b4636" stroke-width="2" stroke-linecap="round"/>
+  <!-- one eye + single glasses lens (profile) -->
+  <circle cx="32" cy="24" r="5" fill="#d3ecff" stroke="#2d3748" stroke-width="2"/>
+  <circle cx="33" cy="24" r="1.7" fill="#2d3748"/>
+  <line x1="27" y1="24" x2="19" y2="25.5" stroke="#2d3748" stroke-width="1.8"/>
+  <!-- mouth on the front -->
+  <path d="M35.5 36 q2.5 1 4 -1" fill="none" stroke="#a85d4a" stroke-width="1.6" stroke-linecap="round"/>
 </svg>
