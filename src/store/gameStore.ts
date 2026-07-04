@@ -9,7 +9,7 @@ import {
   findNode,
   nextRankCost,
   rankOf,
-  allNodes,
+  totalSpent,
   type Wallet,
   type Ranks,
 } from '../game/tree';
@@ -135,7 +135,7 @@ export const useGameStore = create<GameState>()(
         const obj = getObject(s.objectId);
         if (!canBuyRank(obj, s.ranks, s.wallet, nodeId)) return false;
         const node = findNode(obj, nodeId)!;
-        const cur = rankOf(obj, s.ranks, nodeId);
+        const cur = rankOf(s.ranks, nodeId);
         const cost = nextRankCost(node, cur);
         const wallet = { ...s.wallet };
         for (const c of Object.keys(cost) as CurrencyId[]) {
@@ -148,17 +148,10 @@ export const useGameStore = create<GameState>()(
       // Free, full-refund respec — refunds every currency spent, resets ranks.
       resetTree: () => {
         const s = get();
-        const obj = getObject(s.objectId);
+        const spent = totalSpent(getObject(s.objectId), s.ranks);
         const wallet = { ...s.wallet };
-        for (const node of allNodes(obj)) {
-          if (node.root) continue;
-          const r = s.ranks[node.id] ?? 0;
-          for (let step = 0; step < r; step++) {
-            const cost = nextRankCost(node, step);
-            for (const c of Object.keys(cost) as CurrencyId[]) {
-              wallet[c] = (wallet[c] ?? 0) + (cost[c] ?? 0);
-            }
-          }
+        for (const c of Object.keys(spent) as CurrencyId[]) {
+          wallet[c] = (wallet[c] ?? 0) + (spent[c] ?? 0);
         }
         set({ wallet, ranks: {} });
       },

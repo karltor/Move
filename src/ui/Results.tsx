@@ -1,14 +1,22 @@
 import { CURRENCIES } from '../data/currencies';
 import type { RunMetrics } from '../data/currencies';
 import type { CurrencyId } from '../data/types';
+import type { EndReason } from '../game/engine';
 
 interface Props {
   metrics: RunMetrics;
   awards: Record<CurrencyId, number>;
   mult: number;
+  reason: EndReason;
   onContinue: () => void;
   onUpgrades: () => void;
 }
+
+const TITLES: Record<EndReason, string> = {
+  exhausted: 'Run complete — out of energy',
+  timecap: 'Run complete — the sun set on you',
+  stopped: 'Run ended early',
+};
 
 // Which metric drives which currency — shown so the payout is legible.
 const SOURCE: Record<CurrencyId, (m: RunMetrics) => string> = {
@@ -18,11 +26,11 @@ const SOURCE: Record<CurrencyId, (m: RunMetrics) => string> = {
   momentum: (m) => `m·v = ${Math.round(m.peakMomentum)}`,
 };
 
-export function Results({ metrics, awards, mult, onContinue, onUpgrades }: Props) {
+export function Results({ metrics, awards, mult, reason, onContinue, onUpgrades }: Props) {
   return (
     <div className="modal-backdrop results-backdrop">
       <div className="results">
-        <h2>Run complete — out of energy</h2>
+        <h2>{TITLES[reason]}</h2>
 
         <div className="results-stats">
           <Stat label="Distance" value={`${Math.floor(metrics.distance)} m`} big />

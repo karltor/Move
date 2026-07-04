@@ -32,11 +32,24 @@ export const CONFIG = {
     overexertBurnMult: 1.8,
   },
 
+  engine: {
+    /** Engine tick interval (ms). The sim itself always steps at `sim.dt`;
+     *  the tick just drains a wall-clock accumulator, so hidden-tab
+     *  throttling loses no time — the sim catches up in a burst. */
+    tickMs: 50,
+    /** Collapse/faceplant length when a run ends exhausted (seconds). */
+    collapseSec: 0.75,
+    /** Pause between auto-run runs (seconds). */
+    autoGapSec: 0.7,
+    /** Cap on how much hidden-tab backlog a single tick may simulate (s). */
+    maxCatchupSec: 4 * 3600,
+    /** UI snapshot notification throttle (ms). */
+    notifyMs: 100,
+  },
+
   render: {
     /** Pixels per simulation metre (how fast motion reads on screen). */
     pixelsPerMetre: 20,
-    /** Collapse/faceplant animation length when energy runs out (ms). */
-    collapseMs: 750,
     /** Walk/run animation. `dir` flips the gait direction if it looks wrong. */
     gait: {
       dir: 1,
@@ -66,6 +79,6 @@ export const CONFIG = {
 
   texts: {
     runHint: 'Hold to run · pulse to stay fresh · energy ends the run',
-    treeHint: 'Drag to pan · scroll to zoom · click a node to research it. You can’t max everything — specialise.',
+    treeHint: 'Costs grow every rank and the strong nodes want physics currencies — you can’t max everything, so specialise.',
   },
 } as const;
