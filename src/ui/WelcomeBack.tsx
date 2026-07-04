@@ -41,7 +41,7 @@ export function WelcomeBack({ report, onClaim }: Props) {
         <button className="claim-btn" onClick={onClaim}>
           Collect
         </button>
-        <p className="modal-hint">Tip: actively pedalling earns far more than idling.</p>
+        <p className="modal-hint">Tip: running actively earns far more than idling.</p>
       </div>
     </div>
   );
