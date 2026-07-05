@@ -1,16 +1,17 @@
 // ---------------------------------------------------------------------------
-// DATA-DRIVEN GAME MODEL
+// DATA-DRIVEN GAME MODEL — the whole game is one node graph.
 // ---------------------------------------------------------------------------
-// The upgrade system is a research tree: categories of NODES, each node has
-// 1..N RANKS bought with currencies. Some nodes are single unlocks (maxRanks
-// 1), others scale (e.g. weight −3%/rank). PREREQUISITES gate nodes. You can
-// never max everything, so what you specialise into is your build. Certain
-// nodes also upgrade the character's look via typed COSMETIC slots — the
-// renderer draws each slot procedurally from its tier number, so data never
-// references art files.
+// Three currencies, three verbs:
+//   🔬 Research (earned from DISTANCE)  → UNLOCK a node, once, permanently.
+//   💡 Insight  (earned from SPEED)     → UPGRADE a node's ranks, permanently.
+//   ⚡ Flux     (earned from MOMENTUM)  → EQUIP a node into your loadout.
+// Flux is a BUDGET, not a payment: an equipped node reserves its equip cost
+// and frees it when unequipped. You will unlock far more than you can power,
+// so the loadout is a genuine choice.
 //
-// EXTENSION POINT: add categories/nodes here (the tree is pure data). A new
-// object (bicycle, …) is a new data file with its own categories + renderKind.
+// Traversal is nodes too: mode nodes (skateboard, bicycle, …) swap the whole
+// ride — new base stats, new on-screen vehicle. Only one mode can be
+// equipped at a time; with none equipped you're on foot.
 // ---------------------------------------------------------------------------
 
 export type StatKey =
@@ -28,15 +29,17 @@ export type StatKey =
   | 'assist'
   | 'weatherResist'; // 0..~0.9: dampens weather effects (good and bad)
 
-export type CurrencyId = 'research' | 'pace' | 'kinetic' | 'momentum';
-export type Cost = Partial<Record<CurrencyId, number>>;
+export type CurrencyId = 'research' | 'insight' | 'flux';
 
-/** A stat modifier applied PER allocated rank (add: +add·rank; mul: mul^rank). */
+/** A stat modifier applied PER rank (add: +add·rank; mul: mul^rank). */
 export interface StatMod {
   stat: StatKey;
   add?: number;
   mul?: number;
 }
+
+export type ModeId = 'run' | 'skateboard' | 'bicycle' | 'rocket';
+export type VehicleId = 'none' | 'skateboard' | 'bicycle' | 'rocket';
 
 /** Renderer attachment points on the character. Tier 0 = base look. */
 export type CosmeticSlot = 'shoes' | 'coat' | 'headgear' | 'back';
@@ -47,40 +50,39 @@ export interface NodeCosmetic {
   tiers: { minRank: number; tier: number }[];
 }
 
-export interface TreeNode {
+export type BranchId = 'body' | 'mind' | 'gear' | 'tech' | 'mode';
+
+export interface NodeDef {
   id: string;
   name: string;
   desc: string;
-  /** Emoji shown on the node card. */
+  /** Emoji shown on the node. */
   icon: string;
-  /** 1 = single unlock; >1 = multi-rank. */
-  maxRanks: number;
-  /** Cost of rank 1. Each further rank multiplies by `costGrowth`. */
-  cost: Cost;
-  costGrowth?: number; // default from CONFIG.tree.costGrowth
-  /** Stat mods applied per allocated rank. */
-  mods: StatMod[];
-  /** Node ids that must have >=1 rank before this node can be started. */
+  branch: BranchId;
+  /** Grid position in the Lab graph (col ≈ tier / depth). */
+  pos: { col: number; row: number };
+  /** Node ids that must be UNLOCKED (not equipped) before this one. */
   prereqs: string[];
+  /** 🔬 Research to unlock (buys rank 1). */
+  unlockCost: number;
+  /** Ranks including the unlock rank; 1 = no upgrades possible. */
+  maxRanks: number;
+  /** 💡 Insight for rank 2; each further rank scales by CONFIG.tree.costGrowth. */
+  rankCost: number;
+  /** ⚡ Flux reserved while this node is in the loadout. */
+  equipCost: number;
+  /** Stat mods applied per rank — ONLY while the node is equipped. */
+  mods: StatMod[];
+  /** Present on traversal nodes: equipping switches to this mode. */
+  mode?: ModeId;
   cosmetic?: NodeCosmetic;
 }
 
-export interface TreeCategory {
-  id: string;
+export interface ModeDef {
+  id: ModeId;
   name: string;
-  color: string;
-  /** Emoji shown on the category tab. */
   icon: string;
   blurb: string;
-  nodes: TreeNode[];
-}
-
-export type RenderKind = 'walker';
-
-export interface GameObjectDef {
-  id: string;
-  name: string;
-  renderKind: RenderKind;
+  vehicle: VehicleId;
   baseStats: Record<StatKey, number>;
-  categories: TreeCategory[];
 }

@@ -4,37 +4,50 @@ interface Props {
   onDone: () => void;
 }
 
-// A shadowy benefactor with unmistakable spiky quills and a cocky grin.
+// A shadowy benefactor. Blue, round, three big quills swept back off the
+// head, pointy ears, joined eyes, a cocky smirk — you know exactly who this
+// is supposed to be, and legal has asked us not to say it.
 function ShadowFigure() {
   return (
-    <svg viewBox="0 0 200 200" className="shadow-figure" width="180" height="180">
+    <svg viewBox="0 0 220 200" className="shadow-figure" width="200" height="180">
       <defs>
-        <radialGradient id="glow" cx="50%" cy="40%" r="60%">
-          <stop offset="0%" stopColor="#1f3b66" />
-          <stop offset="100%" stopColor="#0a0f1c" />
+        <radialGradient id="glow" cx="55%" cy="40%" r="65%">
+          <stop offset="0%" stopColor="#274a8c" />
+          <stop offset="100%" stopColor="#0a1228" />
         </radialGradient>
       </defs>
-      {/* spiky head + quills silhouette */}
+
+      {/* three big quills swept back-left off the head */}
+      <path fill="url(#glow)" d="M118 52 C 90 30, 52 26, 22 42 C 52 46, 72 56, 86 72 Z" />
+      <path fill="url(#glow)" d="M112 74 C 82 60, 44 60, 16 80 C 48 80, 70 88, 84 100 Z" />
+      <path fill="url(#glow)" d="M110 98 C 84 92, 52 96, 30 116 C 58 112, 78 116, 90 126 Z" />
+
+      {/* head */}
+      <circle cx="126" cy="92" r="52" fill="url(#glow)" />
+      {/* pointy ears */}
+      <path fill="url(#glow)" d="M96 52 L 88 22 L 118 44 Z" />
+      <path fill="url(#glow)" d="M148 44 L 162 18 L 172 50 Z" />
+
+      {/* joined eyes — one connected white mask, pupils glinting */}
       <path
-        fill="url(#glow)"
-        d="M100 28
-           c-30 0 -52 18 -56 44
-           l-30 -10 22 26 -26 8 28 12
-           c4 30 30 52 66 52
-           c40 0 70 -28 70 -64
-           c0 -8 -2 -16 -6 -24
-           l30 -14 -30 -6 18 -22 -28 8
-           c-12 -16 -30 -24 -52 -24 z"
+        fill="#e7edf7"
+        d="M104 78 q 12 -14 24 -2 q 12 -12 26 0 q 8 10 4 22 q -6 12 -17 8 q -8 -3 -11 -12 q -3 9 -11 12 q -11 4 -17 -8 q -4 -12 2 -20 z"
       />
-      {/* body */}
-      <ellipse cx="100" cy="168" rx="46" ry="24" fill="#0a0f1c" />
-      {/* eyes */}
-      <ellipse cx="86" cy="96" rx="9" ry="13" fill="#fff" />
-      <ellipse cx="110" cy="96" rx="9" ry="13" fill="#fff" />
-      <circle cx="88" cy="99" r="4" fill="#1a202c" />
-      <circle cx="112" cy="99" r="4" fill="#1a202c" />
-      {/* smirk */}
-      <path d="M82 122 q20 14 40 0" stroke="#cbd5e0" strokeWidth="3" fill="none" strokeLinecap="round" />
+      <ellipse cx="122" cy="92" rx="4.5" ry="7" fill="#0a1228" />
+      <ellipse cx="146" cy="92" rx="4.5" ry="7" fill="#0a1228" />
+
+      {/* muzzle + smirk */}
+      <ellipse cx="138" cy="116" rx="22" ry="13" fill="#16233f" />
+      <circle cx="152" cy="106" r="4" fill="#0a1228" />
+      <path d="M120 122 q 18 12 34 -2" stroke="#8fa8d0" strokeWidth="3" fill="none" strokeLinecap="round" />
+
+      {/* body + folded arms, mostly swallowed by shadow */}
+      <ellipse cx="122" cy="172" rx="44" ry="22" fill="#0a1228" />
+      <path d="M96 160 q 26 14 52 0" stroke="#22355c" strokeWidth="8" fill="none" strokeLinecap="round" />
+      {/* white glove resting on the arm */}
+      <circle cx="146" cy="158" r="8" fill="#dfe6f2" />
+      {/* red shoe tip catching the light */}
+      <path d="M84 184 q 10 -8 24 -4 l -2 8 q -12 4 -22 -4 z" fill="#b83232" />
     </svg>
   );
 }

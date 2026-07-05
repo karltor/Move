@@ -79,6 +79,6 @@ export const CONFIG = {
 
   texts: {
     runHint: 'Hold to run · pulse to stay fresh · energy ends the run',
-    treeHint: 'Costs grow every rank and the strong nodes want physics currencies — you can’t max everything, so specialise.',
+    treeHint: '🔬 Research unlocks · 💡 Insight upgrades · ⚡ Flux equips — you can unlock everything, but you can only power so much at once.',
   },
 } as const;

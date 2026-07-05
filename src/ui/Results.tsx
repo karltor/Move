@@ -21,9 +21,8 @@ const TITLES: Record<EndReason, string> = {
 // Which metric drives which currency — shown so the payout is legible.
 const SOURCE: Record<CurrencyId, (m: RunMetrics) => string> = {
   research: (m) => `${Math.floor(m.distance)} m travelled`,
-  pace: (m) => `${m.avgSpeed.toFixed(1)} m/s average`,
-  kinetic: (m) => `½·m·v² at ${m.maxSpeed.toFixed(1)} m/s`,
-  momentum: (m) => `m·v = ${Math.round(m.peakMomentum)}`,
+  insight: (m) => `${m.avgSpeed.toFixed(1)} m/s avg · ${m.maxSpeed.toFixed(1)} peak`,
+  flux: (m) => `momentum ${Math.round(m.peakMomentum)} kg·m/s`,
 };
 
 export function Results({ metrics, awards, mult, reason, onContinue, onUpgrades }: Props) {
@@ -62,7 +61,7 @@ export function Results({ metrics, awards, mult, reason, onContinue, onUpgrades 
 
         <div className="results-actions">
           <button className="results-upgrades" onClick={onUpgrades}>
-            🔬 Open Upgrades
+            🧪 Open the Lab
           </button>
           <button className="results-continue" onClick={onContinue} autoFocus>
             Run again →
