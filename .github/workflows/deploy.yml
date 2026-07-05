@@ -1,20 +1,24 @@
 name: Deploy to GitHub Pages
 
+# Everything lives on main: every push builds the site and deploys it to
+# Pages directly from the workflow artifact. No gh-pages branch involved.
+
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
-# Needs write access to push the built site to the gh-pages branch.
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
 
 concurrency:
   group: pages
   cancel-in-progress: false
 
 jobs:
-  build-deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,13 +29,21 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
-      # .nojekyll stops GitHub from running Jekyll over the built files.
-      - run: touch dist/.nojekyll
-      # Publishes the COMPILED site (dist/) to the gh-pages branch. That branch
-      # contains real HTML/JS referencing /Move/assets/* — no src/main.tsx.
-      - name: Publish dist/ to gh-pages
-        uses: peaceiris/actions-gh-pages@v4
+      # enablement: true sets the repo's Pages source to "GitHub Actions"
+      # automatically — no manual step in Settings → Pages.
+      - uses: actions/configure-pages@v5
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./dist
-          publish_branch: gh-pages
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

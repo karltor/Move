@@ -69,23 +69,19 @@ npm run preview    # serve the built dist/ with the Pages base path
 
 ## Deploying to GitHub Pages
 
-A workflow at `.github/workflows/deploy.yml` builds the site on every push to
-`main` and publishes the **compiled** `dist/` to a **`gh-pages`** branch. That
-branch contains real HTML/JS (no `src/main.tsx`), so Pages serves a working app.
-
-**One manual step (only needed once):** after the workflow has run at least once
-(so the `gh-pages` branch exists), go to
-**Settings → Pages → Build and deployment**, set **Source = "Deploy from a
-branch"**, **Branch = `gh-pages`**, folder **`/ (root)`**, and Save. The game
-will be live at:
+Everything lives on `main` — there is **no `gh-pages` branch**. The workflow
+at `.github/workflows/deploy.yml` runs on every push to `main`: it tests,
+builds, and deploys the compiled `dist/` straight to Pages via the official
+`actions/deploy-pages` flow. `actions/configure-pages` (with
+`enablement: true`) sets the repo's Pages source to **"GitHub Actions"**
+automatically, so there is no manual settings step. The game is live at:
 
 ```
 https://<your-username>.github.io/Move/
 ```
 
-> Why a branch and not "GitHub Actions" source? Serving from a branch that holds
-> the built output is unambiguous: if you ever see a `GET /src/main.tsx 404`, it
-> means Pages is serving un-built source — the `gh-pages` branch can't do that.
+If a stale `gh-pages` branch still exists from the old setup, it's unused and
+safe to delete (`git push origin --delete gh-pages`).
 
 If you rename the repository, update the one `base` string in
 `vite.config.ts` (`/Move/`) to match the new repo name.
