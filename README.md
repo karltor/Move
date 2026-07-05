@@ -1,12 +1,15 @@
 # Move
 
 A browser-based incremental **"go as far as possible"** game. It opens with a
-short story — a broke research lab, funded by a shadowy figure who just wants
-them to **GO FAST** — and starts you as a lone **scientist on foot**, jogging
-across a rough field as colleagues cheer. You earn physics-flavoured currencies
-and spend them across a Path-of-Exile-style passive tree. Much later comes the
-bicycle (rotational motion) and, eventually, relativistic regimes. Plays
-actively or idles in the background; progress persists to `localStorage`.
+short story — a broke research lab, funded by a suspiciously fast-looking
+shadowy figure who just wants them to **GO FAST** — and starts you as a lone
+**scientist on foot**, jogging across a rough field as colleagues cheer.
+
+The whole game is **one node graph**: you unlock nodes, upgrade nodes, and —
+because your loadout budget is always smaller than your collection — choose
+which nodes to actually equip. Deeper in the graph, traversal nodes replace
+your legs entirely: **skateboard → bicycle → rocket skates**. Plays actively
+or idles in the background; progress persists to `localStorage`.
 
 Built with **Vite + TypeScript + React** (UI), **PixiJS** (canvas), and
 **Zustand** (`persist`) for game state. Deploys to **GitHub Pages**.
@@ -21,16 +24,21 @@ Built with **Vite + TypeScript + React** (UI), **PixiJS** (canvas), and
    rolls a **weather** condition (rain, heatwave, tailwind, mud…) that shifts the
    stats; the *Acclimatization* nodes dampen its effect.
 2. The **results screen** breaks down the run (distance, top/avg speed in m/s,
-   duration) and the **lump-sum** currencies it earned: 💰 Grants (distance),
-   🏃 Pace (avg speed), ⚡ Kinetic Energy (½·m·v²), 🌀 Momentum (m·v). KE and
-   momentum are log-scaled so future heavy/fast objects stay relevant.
-3. Open the **Upgrades** panel (the run keeps going behind it). Spend
-   **Research** on node **ranks**: some nodes are single unlocks, others are
-   **multi-rank** (e.g. Lightweight Materials → weight −3%/rank).
-   **Prerequisites** gate paths, and the strongest nodes also cost the physics
-   currencies (Pace/Kinetic/Momentum), so you **specialise** rather than max
-   everything — that's your build. Key nodes also upgrade the character's
-   look (shoes, coat, goggles/helmet, exosuit) as they rank up.
+   duration) and the currencies it earned. **Three currencies, three verbs**:
+   - 🔬 **Research** (from distance) → **unlocks** nodes, permanently.
+   - 💡 **Insight** (from speed) → **upgrades** node ranks, permanently.
+   - ⚡ **Flux** (from peak momentum, log-scaled) → **equips** nodes. Flux is a
+     *budget*, not a payment: an equipped node reserves its cost and frees it
+     when unequipped.
+3. Open **The Lab** (the run keeps going behind it) — one full-window node
+   graph where you can see at a glance what's locked, unlockable, unlocked and
+   equipped. The sidebar shows the selected node's actions, your **loadout**
+   with its Flux meter, and **every stat of the current build** with a
+   plain-language explanation of what each one does. Unlocked nodes do
+   *nothing* until equipped — you'll unlock far more than you can power, so
+   the loadout is where the choices happen. **Traversal nodes** (skateboard,
+   bicycle, rocket skates) swap the whole ride: new base stats, new vehicle on
+   screen, one at a time.
 4. **Run again** to go further (or **End run** early to bank what you have).
    Refresh — your progress is still there.
 
@@ -84,23 +92,22 @@ If you rename the repository, update the one `base` string in
 
 ## Architecture (built to grow)
 
-The long-term plan is multiple **main objects** (roller skates, car, train,
-particle…), each its own passive tree with its own specialities, mutually
-exclusive (switching is a respec). So content is **data, not code**:
+Everything the player progresses through is **data, not code** — the node
+graph, the traversal modes and the currencies are plain typed definitions:
 
 - **`src/data/`** — typed config, no art files.
-  - `types.ts` defines `GameObjectDef` (with a `renderKind`) → `TreeCategory` →
-    `TreeNode` (cost/mods/prereqs/emoji icon), plus `StatKey`, `StatMod`,
-    `CurrencyId` and typed **cosmetic slots** (`shoes`/`coat`/`headgear`/`back`
-    with tier numbers — the renderer decides how a tier looks).
-  - `currencies.ts` defines the currencies and how each is awarded from a run's
-    `RunMetrics` (the log-scaled KE/momentum live here).
-  - `scientist.ts` is the starting object: base stats + a research tech tree of
-    categories → multi-rank nodes (prereqs, scaling costs, cosmetics). The
-    **bicycle** is a future object (a new data file with a new renderKind);
-    relativistic regimes come later still — neither touches existing code.
-  - `index.ts` is the object registry. **Adding a new object = a new data file
-    registered here** — no changes to the simulation or UI.
+  - `types.ts` defines `NodeDef` (unlock/rank/equip costs, per-rank `StatMod`s,
+    prereqs, grid position, optional traversal `mode`), `ModeDef` (base stats +
+    vehicle), `StatKey`, `CurrencyId` and typed **cosmetic slots**
+    (`shoes`/`coat`/`headgear`/`back` tiers — the renderer decides how a tier
+    looks).
+  - `nodes.ts` is the whole game: ~30 nodes across five branches (body, mind,
+    gear, tech, modes) with balance intent documented at the top. **Adding
+    content = adding a node here.**
+  - `modes.ts` defines the rides (on foot → skateboard → bicycle → rocket
+    skates) as base-stat profiles — the same pure sim runs all of them.
+  - `currencies.ts` maps run metrics to the three currencies (🔬 distance,
+    💡 speed, ⚡ log-scaled momentum) and states each one's verb.
 - **`src/sim/ride.ts`** — the **pure** physics. `rideStep(state, stats, exert,
   dt)` advances one tick (energy reserve + stamina model) with no
   rendering/state/randomness; `isFinished` ends a run on exhaustion;
@@ -113,27 +120,31 @@ exclusive (switching is a respec). So content is **data, not code**:
   hidden tab catches up losslessly instead of freezing. React subscribes to
   throttled snapshots (`useSyncExternalStore`); the renderer `peek()`s live
   state each frame. Unit-tested in `engine.test.ts`.
-- **`src/game/tree.ts`** — generic tech-tree logic: rank state, scaling rank
-  costs, prerequisites, stat aggregation (additive then multiplicative
-  passes), cosmetic-tier resolution and progress counts. No object-specific
-  code. Unit-tested in `tree.test.ts`.
+- **`src/game/tree.ts`** — the unlock/upgrade/equip rules: prereqs, scaling
+  rank costs, the **Flux budget** (reserved by equipped nodes, freed on
+  unequip), mode exclusivity, stat aggregation from the active mode's base
+  stats + equipped mods (additive then multiplicative passes), and
+  cosmetic/vehicle resolution. Unit-tested in `tree.test.ts`.
 - **`src/render/`** — pure Pixi, consumes the engine read-only.
   - `walker.ts` draws the scientist **procedurally** (jointed two-segment
-    limbs, speed-scaled gait, collapse pose) and applies cosmetic tiers
-    synchronously — no texture loading, no async rebuild races.
+    limbs, speed-scaled gait, collapse pose) plus the vehicles: skateboard
+    (push cycle), bicycle (pedal IK from the saddle, spinning spoked wheels)
+    and rocket skates (flames). Cosmetics apply synchronously — no texture
+    loading, no async rebuild races.
   - `scenery.ts` generates sky/weather, parallax hills, ground detail and
     distance signs in **chunks around the camera** (constant cost no matter
     how far you run), plus the crowd and speed lines.
   - `stage.ts` composes them and follows the camera; `StageView.tsx` is the
     thin React mount.
 - **`src/store/gameStore.ts`** — central Zustand store (wallet, `ranks`,
-  best/run counters, auto-run, `introSeen`, `lastActive`, `saveVersion`)
-  persisted to `localStorage`, with a **real `migrate`** (v1 → … → v5) and
-  offline catch-up computed on rehydrate.
+  `equipped` loadout, best/run counters, auto-run, `introSeen`, `lastActive`,
+  `saveVersion`) persisted to `localStorage`, with a **real `migrate`**
+  (v1 → … → v6) and offline catch-up computed on rehydrate.
 - **`src/ui/`** — React HUD (currencies), live ride bars (stamina, energy,
-  freshness, speed in m/s), the tabbed **`UpgradePanel`** (category tabs, rank
-  pips, cost chips, prereq locks), the end-of-run **`Results`** screen (titled
-  by how the run ended), the `Intro` story, and `WelcomeBack`.
+  freshness, speed in m/s), **`Lab.tsx`** (the full-window node graph with the
+  loadout + build-stats sidebar; stat explanations live in `statInfo.ts`), the
+  end-of-run **`Results`** screen (titled by how the run ended), the `Intro`
+  story, and `WelcomeBack`.
 
 ### Tuning (`src/config.ts`)
 
@@ -143,14 +154,13 @@ rhythmic *pulsing* beats mashing), engine timing (tick interval, collapse
 length, auto-run gap, hidden-tab catch-up cap), render scale and gait params
 (incl. a `gait.dir` flip if the run cycle ever looks reversed), the tree
 **cost-growth exponent**, the active-play bonus, and the offline-earning rate,
-plus UI hint text. Per-object physics (a specific
-object's friction/drag/mass/power/energy) are its `baseStats` in its data file;
-upgrade values/costs are the node definitions there; weather lives in
-`src/data/weather.ts`.
+plus UI hint text. Per-mode physics (a ride's friction/drag/mass/power/energy)
+are its `baseStats` in `src/data/modes.ts`; node values/costs live in
+`src/data/nodes.ts`; weather lives in `src/data/weather.ts`.
 
 ### Out of scope (for now)
 
-Electron/Steam, the bicycle and later vehicles, relativistic motion, prestige
-layers, audio, polished art, and any backend or cloud saves. The architecture
-(data-driven objects, a pure sim, generic tree logic) leaves clear room for all
-of these without painting us into a corner.
+Electron/Steam, further vehicles beyond the rocket skates, relativistic
+motion, prestige layers, audio, polished art, and any backend or cloud saves.
+The architecture (a data-defined node graph, mode base-stat profiles, a pure
+sim) leaves clear room for all of these without painting us into a corner.

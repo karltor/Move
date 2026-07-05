@@ -1,95 +1,104 @@
-import type { GameObjectDef, TreeNode, CurrencyId, Cost, CosmeticSlot } from '../data/types';
+import type { NodeDef, CurrencyId, ModeId, VehicleId } from '../data/types';
 import type { RideStats } from '../sim/ride';
-import { CURRENCY_IDS } from '../data/currencies';
+import { NODES, NODES_BY_ID } from '../data/nodes';
+import { MODES } from '../data/modes';
 import { CONFIG } from '../config';
 
 // ---------------------------------------------------------------------------
-// TECH-TREE LOGIC (generic across every object)
+// NODE-GRAPH LOGIC — unlock / upgrade / equip.
 // ---------------------------------------------------------------------------
-// Player state is `ranks: nodeId -> ranks bought`. A node can take its next
-// rank when its prereqs each have >=1 rank, it isn't maxed, and you can
-// afford the (scaling) cost.
+// Player state is:
+//   ranks:    nodeId -> rank (>=1 means UNLOCKED; unlock buys rank 1)
+//   equipped: nodeIds currently in the loadout
+// A node's mods apply ONLY while equipped. Equipped nodes reserve their
+// equip cost from the Flux total (never consumed — unequip frees it).
+// At most one MODE node can be equipped; it selects the ride's base stats
+// and vehicle. With none equipped you're on foot.
 // ---------------------------------------------------------------------------
 
 export type Wallet = Record<CurrencyId, number>;
 export type Ranks = Record<string, number>;
 
-export function allNodes(obj: GameObjectDef): TreeNode[] {
-  return obj.categories.flatMap((c) => c.nodes);
-}
-
-export function findNode(obj: GameObjectDef, id: string): TreeNode | undefined {
-  return allNodes(obj).find((n) => n.id === id);
+export function getNode(id: string): NodeDef | undefined {
+  return NODES_BY_ID.get(id);
 }
 
 export function rankOf(ranks: Ranks, id: string): number {
   return ranks[id] ?? 0;
 }
 
-/** Cost of the next rank: rank-1 cost scaled by growth^(currentRank). */
-export function nextRankCost(node: TreeNode, currentRank: number): Cost {
-  const growth = node.costGrowth ?? CONFIG.tree.costGrowth;
-  const factor = Math.pow(growth, currentRank);
-  const out: Cost = {};
-  for (const c of CURRENCY_IDS) {
-    const base = node.cost[c];
-    if (base) out[c] = Math.round(base * factor);
-  }
-  return out;
+export function isUnlocked(ranks: Ranks, id: string): boolean {
+  return rankOf(ranks, id) >= 1;
 }
 
-export function canPay(wallet: Wallet, cost: Cost): boolean {
-  return CURRENCY_IDS.every((c) => (wallet[c] ?? 0) >= (cost[c] ?? 0));
+export function prereqsMet(ranks: Ranks, node: NodeDef): boolean {
+  return node.prereqs.every((p) => isUnlocked(ranks, p));
 }
 
-export function prereqsMet(ranks: Ranks, node: TreeNode): boolean {
-  return node.prereqs.every((p) => rankOf(ranks, p) >= 1);
+// --- unlock (🔬 research) ---------------------------------------------------
+
+export function canUnlock(wallet: Wallet, ranks: Ranks, id: string): boolean {
+  const node = getNode(id);
+  if (!node || isUnlocked(ranks, id)) return false;
+  return prereqsMet(ranks, node) && wallet.research >= node.unlockCost;
 }
 
-export type NodeStatus = 'maxed' | 'available' | 'inprogress' | 'lockedPrereq' | 'cantAfford';
+// --- upgrade (💡 insight) ----------------------------------------------------
 
-export function nodeStatus(node: TreeNode, ranks: Ranks, wallet: Wallet): NodeStatus {
-  const cur = rankOf(ranks, node.id);
-  if (cur >= node.maxRanks) return 'maxed';
-  if (!prereqsMet(ranks, node)) return 'lockedPrereq';
-  if (!canPay(wallet, nextRankCost(node, cur))) return cur > 0 ? 'inprogress' : 'cantAfford';
-  return cur > 0 ? 'inprogress' : 'available';
+/** Insight cost of the NEXT rank, or null when maxed (or not yet unlocked). */
+export function nextRankCost(node: NodeDef, currentRank: number): number | null {
+  if (currentRank < 1 || currentRank >= node.maxRanks) return null;
+  return Math.round(node.rankCost * Math.pow(CONFIG.tree.costGrowth, currentRank - 1));
 }
 
-export function canBuyRank(obj: GameObjectDef, ranks: Ranks, wallet: Wallet, id: string): boolean {
-  const node = findNode(obj, id);
+export function canUpgrade(wallet: Wallet, ranks: Ranks, id: string): boolean {
+  const node = getNode(id);
   if (!node) return false;
-  const cur = rankOf(ranks, id);
-  if (cur >= node.maxRanks) return false;
-  if (!prereqsMet(ranks, node)) return false;
-  return canPay(wallet, nextRankCost(node, cur));
+  const cost = nextRankCost(node, rankOf(ranks, id));
+  return cost !== null && wallet.insight >= cost;
 }
 
-/** Everything spent to reach the current ranks (for a full-refund respec). */
-export function totalSpent(obj: GameObjectDef, ranks: Ranks): Cost {
-  const out: Cost = {};
-  for (const node of allNodes(obj)) {
-    const r = rankOf(ranks, node.id);
-    for (let step = 0; step < r; step++) {
-      const cost = nextRankCost(node, step);
-      for (const c of Object.keys(cost) as CurrencyId[]) {
-        out[c] = (out[c] ?? 0) + (cost[c] ?? 0);
-      }
-    }
-  }
-  return out;
+// --- equip (⚡ flux budget) ---------------------------------------------------
+
+export function fluxUsed(equipped: string[]): number {
+  return equipped.reduce((sum, id) => sum + (getNode(id)?.equipCost ?? 0), 0);
 }
 
-/** Aggregate base stats + every allocated rank's mods (add·rank, then mul^rank). */
-export function aggregateStats(obj: GameObjectDef, ranks: Ranks): RideStats {
-  const stats = { ...obj.baseStats } as RideStats;
-  const allocated = allNodes(obj)
-    .map((n) => ({ n, r: rankOf(ranks, n.id) }))
-    .filter((x) => x.r > 0);
+export function fluxFree(wallet: Wallet, equipped: string[]): number {
+  return wallet.flux - fluxUsed(equipped);
+}
 
-  for (const { n, r } of allocated)
+export function equippedModeNode(equipped: string[]): NodeDef | undefined {
+  return equipped.map((id) => getNode(id)).find((n) => n?.mode) ?? undefined;
+}
+
+/** Equipping a mode node implicitly swaps out the current mode node, so its
+ *  reserved flux counts as free for the check. */
+export function canEquip(wallet: Wallet, ranks: Ranks, equipped: string[], id: string): boolean {
+  const node = getNode(id);
+  if (!node || !isUnlocked(ranks, id) || equipped.includes(id)) return false;
+  let free = fluxFree(wallet, equipped);
+  if (node.mode) free += equippedModeNode(equipped)?.equipCost ?? 0;
+  return free >= node.equipCost;
+}
+
+// --- aggregation --------------------------------------------------------------
+
+export function activeModeId(equipped: string[]): ModeId {
+  return equippedModeNode(equipped)?.mode ?? 'run';
+}
+
+/** Loadout stats: active mode's base stats + every EQUIPPED node's mods
+ *  (add·rank first, then mul^rank), then sanity clamps. */
+export function aggregateStats(ranks: Ranks, equipped: string[]): RideStats {
+  const stats = { ...MODES[activeModeId(equipped)].baseStats } as RideStats;
+  const nodes = equipped
+    .map((id) => ({ n: getNode(id), r: rankOf(ranks, id) }))
+    .filter((x): x is { n: NodeDef; r: number } => !!x.n && x.r > 0);
+
+  for (const { n, r } of nodes)
     for (const m of n.mods) if (m.add != null) stats[m.stat] += m.add * r;
-  for (const { n, r } of allocated)
+  for (const { n, r } of nodes)
     for (const m of n.mods) if (m.mul != null) stats[m.stat] *= Math.pow(m.mul, r);
 
   stats.walkPower = Math.max(0, stats.walkPower);
@@ -108,14 +117,24 @@ export function aggregateStats(obj: GameObjectDef, ranks: Ranks): RideStats {
   return stats;
 }
 
-/** Tier per cosmetic slot from allocated ranks (0 = base look). */
-export type Cosmetics = Record<CosmeticSlot, number>;
+// --- look ----------------------------------------------------------------------
 
-export function resolveCosmetics(obj: GameObjectDef, ranks: Ranks): Cosmetics {
-  const out: Cosmetics = { shoes: 0, coat: 0, headgear: 0, back: 0 };
-  for (const n of allNodes(obj)) {
-    if (!n.cosmetic) continue;
-    const r = rankOf(ranks, n.id);
+export interface Cosmetics {
+  shoes: number;
+  coat: number;
+  headgear: number;
+  back: number;
+  vehicle: VehicleId;
+}
+
+/** What the character wears/rides — from EQUIPPED nodes only. */
+export function resolveCosmetics(ranks: Ranks, equipped: string[]): Cosmetics {
+  const out: Cosmetics = { shoes: 0, coat: 0, headgear: 0, back: 0, vehicle: 'none' };
+  out.vehicle = MODES[activeModeId(equipped)].vehicle;
+  for (const id of equipped) {
+    const n = getNode(id);
+    if (!n?.cosmetic) continue;
+    const r = rankOf(ranks, id);
     for (const t of n.cosmetic.tiers) {
       if (r >= t.minRank && t.tier > out[n.cosmetic.slot]) out[n.cosmetic.slot] = t.tier;
     }
@@ -123,21 +142,45 @@ export function resolveCosmetics(obj: GameObjectDef, ranks: Ranks): Cosmetics {
   return out;
 }
 
-export interface TreeProgress {
-  total: number;
-  maxed: number;
-  inProgress: number;
-  locked: number;
+// --- misc ------------------------------------------------------------------------
+
+/** Everything permanently spent (for a full-refund respec). Flux is never spent. */
+export function totalSpent(ranks: Ranks): { research: number; insight: number } {
+  let research = 0;
+  let insight = 0;
+  for (const node of NODES) {
+    const r = rankOf(ranks, node.id);
+    if (r < 1) continue;
+    research += node.unlockCost;
+    for (let step = 1; step < r; step++) insight += nextRankCost(node, step) ?? 0;
+  }
+  return { research, insight };
 }
 
-export function treeProgress(obj: GameObjectDef, ranks: Ranks, wallet: Wallet): TreeProgress {
-  let maxed = 0, inProgress = 0, locked = 0, total = 0;
-  for (const n of allNodes(obj)) {
-    total++;
-    const s = nodeStatus(n, ranks, wallet);
-    if (s === 'maxed') maxed++;
-    else if (s === 'inprogress') inProgress++;
-    else if (s === 'lockedPrereq') locked++;
+export type NodeState = 'locked' | 'unlockable' | 'unlocked' | 'equipped';
+
+export function nodeState(ranks: Ranks, equipped: string[], id: string): NodeState {
+  const node = getNode(id);
+  if (!node) return 'locked';
+  if (equipped.includes(id)) return 'equipped';
+  if (isUnlocked(ranks, id)) return 'unlocked';
+  return prereqsMet(ranks, node) ? 'unlockable' : 'locked';
+}
+
+export interface TreeProgress {
+  total: number;
+  unlocked: number;
+  maxed: number;
+  equipped: number;
+}
+
+export function treeProgress(ranks: Ranks, equipped: string[]): TreeProgress {
+  let unlocked = 0;
+  let maxed = 0;
+  for (const n of NODES) {
+    const r = rankOf(ranks, n.id);
+    if (r >= 1) unlocked++;
+    if (r >= n.maxRanks) maxed++;
   }
-  return { total, maxed, inProgress, locked };
+  return { total: NODES.length, unlocked, maxed, equipped: equipped.length };
 }

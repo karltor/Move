@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { getObject } from './data';
 import { useGameStore } from './store/gameStore';
 import { aggregateStats, resolveCosmetics } from './game/tree';
 import { RunEngine, type EndReason, type EngineSnapshot } from './game/engine';
@@ -9,7 +8,7 @@ import type { CurrencyId } from './data/types';
 import { CONFIG } from './config';
 import { Hud } from './ui/Hud';
 import { RideBars } from './ui/RideBars';
-import { UpgradePanel } from './ui/UpgradePanel';
+import { Lab } from './ui/Lab';
 import { Results } from './ui/Results';
 import { WelcomeBack } from './ui/WelcomeBack';
 import { WeatherChip } from './ui/WeatherChip';
@@ -36,27 +35,29 @@ const noopSubscribe = () => () => {};
 const nullSnapshot = () => NULL_SNAPSHOT;
 
 export default function App() {
-  const objectId = useGameStore((s) => s.objectId);
   const wallet = useGameStore((s) => s.wallet);
   const ranks = useGameStore((s) => s.ranks);
+  const equipped = useGameStore((s) => s.equipped);
   const bestDistance = useGameStore((s) => s.bestDistance);
   const runCount = useGameStore((s) => s.runCount);
   const autoRun = useGameStore((s) => s.autoRun);
   const pendingOffline = useGameStore((s) => s.pendingOffline);
   const introSeen = useGameStore((s) => s.introSeen);
-  const buyRank = useGameStore((s) => s.buyRank);
+  const unlockNode = useGameStore((s) => s.unlockNode);
+  const upgradeNode = useGameStore((s) => s.upgradeNode);
+  const equipNode = useGameStore((s) => s.equipNode);
+  const unequipNode = useGameStore((s) => s.unequipNode);
   const resetTree = useGameStore((s) => s.resetTree);
   const setAutoRun = useGameStore((s) => s.setAutoRun);
   const claimOffline = useGameStore((s) => s.claimOffline);
   const touchActive = useGameStore((s) => s.touchActive);
   const setIntroSeen = useGameStore((s) => s.setIntroSeen);
 
-  const object = getObject(objectId);
-  const stats = useMemo(() => aggregateStats(object, ranks), [object, ranks]);
-  const cosmetics = useMemo(() => resolveCosmetics(object, ranks), [object, ranks]);
+  const stats = useMemo(() => aggregateStats(ranks, equipped), [ranks, equipped]);
+  const cosmetics = useMemo(() => resolveCosmetics(ranks, equipped), [ranks, equipped]);
 
   const [engine, setEngine] = useState<RunEngine | null>(null);
-  const [treeOpen, setTreeOpen] = useState(false);
+  const [labOpen, setLabOpen] = useState(false);
   const [results, setResults] = useState<ResultState | null>(null);
 
   // The engine outlives renders and owns the run loop; React only feeds it
@@ -65,7 +66,7 @@ export default function App() {
     const eng = new RunEngine({
       getBaseStats: () => {
         const s = useGameStore.getState();
-        return aggregateStats(getObject(s.objectId), s.ranks);
+        return aggregateStats(s.ranks, s.equipped);
       },
       onRunEnd: (info) => {
         const mult = 1 + Math.min(1, info.activeFrac) * CONFIG.economy.activeBonusMax;
@@ -90,7 +91,7 @@ export default function App() {
     }
   }, [engine, introSeen, pendingOffline]);
 
-  const blocked = treeOpen || !introSeen || !!pendingOffline;
+  const blocked = labOpen || !introSeen || !!pendingOffline;
   const blockedRef = useRef(blocked);
   blockedRef.current = blocked;
   const resultsOpenRef = useRef(!!results);
@@ -182,7 +183,7 @@ export default function App() {
               {running ? 'Running…' : '🏃 Run! (hold Space)'}
             </button>
           )}
-          <button className="lab-btn" onClick={() => setTreeOpen(true)}>🔬 Upgrades</button>
+          <button className="lab-open-btn" onClick={() => setLabOpen(true)}>🧪 The Lab</button>
           <label className="autorun-toggle">
             <input type="checkbox" checked={autoRun} onChange={toggleAutoRun} />
             <span>Auto-run</span>
@@ -190,22 +191,21 @@ export default function App() {
         </div>
       </div>
 
-      {treeOpen && (
-        <div className="modal-backdrop" onClick={() => setTreeOpen(false)}>
-          <div className="up-modal" onClick={(e) => e.stopPropagation()}>
-            <UpgradePanel
-              object={object}
-              wallet={wallet}
-              ranks={ranks}
-              onBuy={buyRank}
-              onReset={resetTree}
-              onClose={() => setTreeOpen(false)}
-            />
-          </div>
-        </div>
+      {labOpen && (
+        <Lab
+          wallet={wallet}
+          ranks={ranks}
+          equipped={equipped}
+          onUnlock={unlockNode}
+          onUpgrade={upgradeNode}
+          onEquip={equipNode}
+          onUnequip={unequipNode}
+          onReset={resetTree}
+          onClose={() => setLabOpen(false)}
+        />
       )}
 
-      {results && !treeOpen && (
+      {results && !labOpen && (
         <Results
           metrics={results.metrics}
           awards={results.awards}
@@ -214,7 +214,7 @@ export default function App() {
           onContinue={() => setResults(null)}
           onUpgrades={() => {
             setResults(null);
-            setTreeOpen(true);
+            setLabOpen(true);
           }}
         />
       )}

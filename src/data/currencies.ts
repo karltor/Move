@@ -1,12 +1,14 @@
 import type { CurrencyId } from './types';
 
 // ---------------------------------------------------------------------------
-// CURRENCIES — derived from a run's METRICS, themed to the story + physics.
+// CURRENCIES — three currencies, three verbs.
 // ---------------------------------------------------------------------------
-// Research is the headline currency (spent on tech-tree node ranks). The rest
-// are physics quantities that gate the deeper/stronger nodes, so they stay
-// meaningful and shape which branches you can actually push into. KE and
-// momentum are log-scaled so future heavy/fast objects stay relevant.
+//   🔬 Research (distance)  → UNLOCK nodes.       Spent permanently.
+//   💡 Insight  (speed)     → UPGRADE node ranks. Spent permanently.
+//   ⚡ Flux     (momentum)  → EQUIP nodes.        A budget: reserved while
+//                             equipped, freed on unequip.
+// Flux is log-scaled so faster/heavier late-game rides keep growing it
+// without exploding.
 // ---------------------------------------------------------------------------
 
 export interface RunMetrics {
@@ -24,6 +26,8 @@ export interface CurrencyDef {
   name: string;
   symbol: string;
   color: string;
+  /** What this currency DOES (shown in the HUD/Lab). */
+  verb: string;
   blurb: string;
   award: (m: RunMetrics) => number;
 }
@@ -32,34 +36,29 @@ export const CURRENCIES: CurrencyDef[] = [
   {
     id: 'research',
     name: 'Research',
-    symbol: '🧪',
+    symbol: '🔬',
     color: '#38b2ac',
-    blurb: 'Research points from the distance you cover. Spent on tech-tree ranks.',
+    verb: 'unlocks nodes',
+    blurb: 'Earned from distance covered. Spend it to unlock nodes.',
     award: (m) => Math.floor(m.distance),
   },
   {
-    id: 'pace',
-    name: 'Pace',
-    symbol: '🏃',
-    color: '#3182ce',
-    blurb: 'From your average speed — gates pacing/endurance nodes.',
-    award: (m) => Math.floor(m.avgSpeed * 6),
+    id: 'insight',
+    name: 'Insight',
+    symbol: '💡',
+    color: '#d69e2e',
+    verb: 'upgrades nodes',
+    blurb: 'Earned from speed. Spend it to rank up unlocked nodes.',
+    award: (m) => Math.floor(m.avgSpeed * 4 + m.maxSpeed * 3),
   },
   {
-    id: 'kinetic',
-    name: 'Kinetic',
+    id: 'flux',
+    name: 'Flux',
     symbol: '⚡',
     color: '#9f7aea',
-    blurb: '½·m·v² at peak speed, log-scaled — gates power nodes.',
-    award: (m) => Math.floor(10 * Math.log2(1 + m.peakKE / 200)),
-  },
-  {
-    id: 'momentum',
-    name: 'Momentum',
-    symbol: '🌀',
-    color: '#dd6b20',
-    blurb: 'm·v at peak speed, log-scaled — gates heavy/tech nodes.',
-    award: (m) => Math.floor(12 * Math.log2(1 + m.peakMomentum / 60)),
+    verb: 'powers your loadout',
+    blurb: 'Earned from peak momentum. Equipped nodes reserve Flux; unequip to free it.',
+    award: (m) => Math.floor(12 * Math.log2(1 + m.peakMomentum / 40)),
   },
 ];
 

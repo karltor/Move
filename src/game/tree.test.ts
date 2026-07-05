@@ -1,16 +1,24 @@
 import { describe, it, expect } from 'vitest';
-import { scientist } from '../data/scientist';
 import {
   aggregateStats,
-  canBuyRank,
+  canUnlock,
+  canUpgrade,
+  canEquip,
+  fluxUsed,
+  fluxFree,
+  getNode,
   nextRankCost,
-  findNode,
+  nodeState,
+  activeModeId,
   resolveCosmetics,
   totalSpent,
-  nodeStatus,
+  equippedModeNode,
   type Wallet,
 } from './tree';
+import { MODES } from '../data/modes';
+import { NODES } from '../data/nodes';
 import { emptyWallet } from '../data/currencies';
+import { CONFIG } from '../config';
 
 function richWallet(): Wallet {
   const w = emptyWallet();
@@ -18,69 +26,125 @@ function richWallet(): Wallet {
   return w;
 }
 
-describe('nextRankCost', () => {
-  it('scales by the growth factor per rank', () => {
-    const node = findNode(scientist, 'fw_light')!; // research: 60, default growth 1.7
-    expect(nextRankCost(node, 0).research).toBe(60);
-    expect(nextRankCost(node, 1).research).toBe(Math.round(60 * 1.7));
-    expect(nextRankCost(node, 2).research).toBe(Math.round(60 * 1.7 * 1.7));
+describe('node data sanity', () => {
+  it('every prereq exists and no node overlaps another on the grid', () => {
+    const seen = new Set<string>();
+    for (const n of NODES) {
+      for (const p of n.prereqs) expect(getNode(p), `${n.id} prereq ${p}`).toBeDefined();
+      const key = `${n.pos.col},${n.pos.row}`;
+      expect(seen.has(key), `grid clash at ${key} (${n.id})`).toBe(false);
+      seen.add(key);
+    }
+  });
+
+  it('mode nodes are single-rank', () => {
+    for (const n of NODES.filter((n) => n.mode)) expect(n.maxRanks).toBe(1);
   });
 });
 
-describe('canBuyRank', () => {
-  it('requires prerequisites at rank >= 1', () => {
-    const wallet = richWallet();
-    expect(canBuyRank(scientist, {}, wallet, 'fw_spring')).toBe(false); // needs fw_light
-    expect(canBuyRank(scientist, { fw_light: 1 }, wallet, 'fw_spring')).toBe(true);
-  });
-
-  it('requires affordable cost and respects maxRanks', () => {
-    expect(canBuyRank(scientist, {}, emptyWallet(), 'fw_light')).toBe(false);
-    expect(canBuyRank(scientist, { fw_light: 3 }, richWallet(), 'fw_light')).toBe(false); // maxed
-  });
-
-  it('rejects unknown nodes', () => {
-    expect(canBuyRank(scientist, {}, richWallet(), 'nope')).toBe(false);
+describe('unlock (research)', () => {
+  it('requires prerequisites unlocked and enough research', () => {
+    expect(canUnlock(richWallet(), {}, 'b_sprint')).toBe(false); // needs b_stride
+    expect(canUnlock(richWallet(), { b_stride: 1 }, 'b_sprint')).toBe(true);
+    expect(canUnlock(emptyWallet(), {}, 'b_stride')).toBe(false); // broke
+    expect(canUnlock(richWallet(), { b_stride: 1 }, 'b_stride')).toBe(false); // already unlocked
   });
 });
 
-describe('nodeStatus', () => {
-  it('distinguishes locked, available, in-progress and maxed', () => {
-    const node = findNode(scientist, 'fw_spring')!;
-    expect(nodeStatus(node, {}, richWallet())).toBe('lockedPrereq');
-    expect(nodeStatus(node, { fw_light: 1 }, richWallet())).toBe('available');
-    expect(nodeStatus(node, { fw_light: 1, fw_spring: 1 }, richWallet())).toBe('inprogress');
-    expect(nodeStatus(node, { fw_light: 1, fw_spring: 3 }, richWallet())).toBe('maxed');
+describe('upgrade (insight)', () => {
+  it('scales the rank cost by the growth factor', () => {
+    const node = getNode('b_stride')!; // rankCost 12
+    expect(nextRankCost(node, 1)).toBe(12);
+    expect(nextRankCost(node, 2)).toBe(Math.round(12 * CONFIG.tree.costGrowth));
+    expect(nextRankCost(node, 3)).toBeNull(); // maxRanks 3
+    expect(nextRankCost(node, 0)).toBeNull(); // not unlocked yet
+  });
+
+  it('canUpgrade needs an unlocked, unmaxed node and enough insight', () => {
+    expect(canUpgrade(richWallet(), {}, 'b_stride')).toBe(false);
+    expect(canUpgrade(richWallet(), { b_stride: 1 }, 'b_stride')).toBe(true);
+    expect(canUpgrade(richWallet(), { b_stride: 3 }, 'b_stride')).toBe(false);
+    expect(canUpgrade(emptyWallet(), { b_stride: 1 }, 'b_stride')).toBe(false);
+  });
+});
+
+describe('equip (flux budget)', () => {
+  it('reserves flux while equipped and frees it for the check on mode swaps', () => {
+    const wallet = { ...emptyWallet(), flux: 100 };
+    const ranks = { b_stride: 1, b_lungs: 1 };
+    expect(canEquip(wallet, ranks, [], 'b_stride')).toBe(true); // 20 <= 100
+    expect(fluxUsed(['b_stride'])).toBe(20);
+    expect(fluxFree(wallet, ['b_stride'])).toBe(80);
+    expect(canEquip(wallet, ranks, ['b_stride'], 'b_stride')).toBe(false); // already on
+    expect(canEquip(wallet, ranks, ['b_stride'], 'b_lungs')).toBe(true); // 25 <= 80
+  });
+
+  it('cannot equip locked nodes or beyond the budget', () => {
+    const wallet = { ...emptyWallet(), flux: 10 };
+    expect(canEquip(wallet, {}, [], 'b_stride')).toBe(false); // not unlocked
+    expect(canEquip(wallet, { b_stride: 1 }, [], 'b_stride')).toBe(false); // 20 > 10
+  });
+
+  it('swapping modes counts the outgoing mode\'s flux as free', () => {
+    const skate = getNode('v_skate')!;
+    const bike = getNode('v_bike')!;
+    const ranks = { v_skate: 1, v_bike: 1 };
+    // budget covers the bike only if the skateboard's reservation comes back
+    const wallet = { ...emptyWallet(), flux: bike.equipCost + skate.equipCost - 100 };
+    expect(canEquip(wallet, ranks, ['v_skate'], 'v_bike')).toBe(bike.equipCost <= wallet.flux);
+    expect(equippedModeNode(['v_skate'])?.id).toBe('v_skate');
   });
 });
 
 describe('aggregateStats', () => {
-  it('applies additive mods then multiplicative mods per rank', () => {
-    const base = scientist.baseStats;
-    // ow_light: weight -2/rank (add); fw_light: weight ×0.97/rank (mul)
-    const stats = aggregateStats(scientist, { ow_light: 2, fw_light: 3 });
-    expect(stats.weight).toBeCloseTo((base.weight - 4) * Math.pow(0.97, 3), 6);
+  it('starts from the equipped mode\'s base stats', () => {
+    expect(activeModeId([])).toBe('run');
+    expect(aggregateStats({}, []).topSpeed).toBe(MODES.run.baseStats.topSpeed);
+    const withBike = aggregateStats({ v_bike: 1 }, ['v_bike']);
+    expect(withBike.topSpeed).toBe(MODES.bicycle.baseStats.topSpeed);
   });
 
-  it('returns base stats with no ranks', () => {
-    expect(aggregateStats(scientist, {}).runPower).toBe(scientist.baseStats.runPower);
+  it('applies mods only for EQUIPPED nodes (unlocked alone does nothing)', () => {
+    const ranks = { b_stride: 2 };
+    expect(aggregateStats(ranks, []).walkPower).toBe(MODES.run.baseStats.walkPower);
+    expect(aggregateStats(ranks, ['b_stride']).walkPower).toBe(MODES.run.baseStats.walkPower + 24);
+  });
+
+  it('applies additive mods before multiplicative mods', () => {
+    const base = MODES.run.baseStats;
+    // g_suit: weight -4/rank (add) + b_feather: weight ×0.95/rank (mul)
+    const ranks = { g_suit: 2, b_feather: 3, g_helmet: 2, g_coat: 1 };
+    const stats = aggregateStats(ranks, ['g_suit', 'b_feather']);
+    expect(stats.weight).toBeCloseTo((base.weight - 8) * Math.pow(0.95, 3), 6);
   });
 });
 
 describe('resolveCosmetics', () => {
-  it('picks the highest satisfied tier per slot', () => {
-    expect(resolveCosmetics(scientist, {})).toEqual({ shoes: 0, coat: 0, headgear: 0, back: 0 });
-    const c = resolveCosmetics(scientist, { fw_light: 3, br_reaction: 1, te_exo: 1 });
-    expect(c.shoes).toBe(2); // rank 3 unlocks tier 2
-    expect(c.headgear).toBe(1); // rank 1 only reaches tier 1
-    expect(c.back).toBe(1);
-    expect(c.coat).toBe(0);
+  it('reflects only the equipped loadout, including the vehicle', () => {
+    const ranks = { g_shoes: 3, g_helmet: 1, v_skate: 1 };
+    expect(resolveCosmetics(ranks, []).shoes).toBe(0); // unlocked but not equipped
+    const c = resolveCosmetics(ranks, ['g_shoes', 'v_skate']);
+    expect(c.shoes).toBe(2); // rank 3 = tier 2
+    expect(c.headgear).toBe(0); // helmet not equipped
+    expect(c.vehicle).toBe('skateboard');
   });
 });
 
-describe('totalSpent', () => {
-  it('sums every rank at its scaled price (full-refund invariant)', () => {
-    const spent = totalSpent(scientist, { fw_light: 2 });
-    expect(spent.research).toBe(60 + Math.round(60 * 1.7));
+describe('totalSpent / respec refund', () => {
+  it('sums unlock costs plus every rank at its scaled price', () => {
+    const spent = totalSpent({ b_stride: 3, g_shoes: 1 });
+    const b = getNode('b_stride')!;
+    const g = getNode('g_shoes')!;
+    expect(spent.research).toBe(b.unlockCost + g.unlockCost);
+    expect(spent.insight).toBe(nextRankCost(b, 1)! + nextRankCost(b, 2)!);
+  });
+});
+
+describe('nodeState', () => {
+  it('walks locked → unlockable → unlocked → equipped', () => {
+    expect(nodeState({}, [], 'b_sprint')).toBe('locked');
+    expect(nodeState({ b_stride: 1 }, [], 'b_sprint')).toBe('unlockable');
+    expect(nodeState({ b_stride: 1, b_sprint: 1 }, [], 'b_sprint')).toBe('unlocked');
+    expect(nodeState({ b_stride: 1, b_sprint: 1 }, ['b_sprint'], 'b_sprint')).toBe('equipped');
   });
 });
