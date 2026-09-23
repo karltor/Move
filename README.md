@@ -1,162 +1,55 @@
-# Move
+# MOVE — Experimental Motion Laboratory
 
-A browser-based incremental **"go as far as possible"** game. It opens with a
-short story — a broke research lab, funded by a suspiciously fast-looking
-shadowy figure who just wants them to **GO FAST** — and starts you as a lone
-**scientist on foot**, jogging across a rough field as colleagues cheer.
+A browser incremental game about a research team trying to make things move faster and travel further.
 
-The whole game is **one node graph**: you unlock nodes, upgrade nodes, and —
-because your loadout budget is always smaller than your collection — choose
-which nodes to actually equip. Deeper in the graph, traversal nodes replace
-your legs entirely: **skateboard → bicycle → rocket skates**. Plays actively
-or idles in the background; progress persists to `localStorage`.
+## Play
 
-Built with **Vite + TypeScript + React** (UI), **PixiJS** (canvas), and
-**Zustand** (`persist`) for game state. Deploys to **GitHub Pages**.
+Start a human expedition in the Field lab. A fresh scientist can sustain a run for about five minutes. Stamina, accumulated fatigue, pace, supplies and research determine how far the expedition goes.
 
-## Core loop
+- **Sustainable** pace balances distance and energy. **Push hard** spends stamina for speed. **Walk & recover** restores energy, but accumulated fatigue lowers recoverable capacity.
+- Three field rations and optional route, sampling and rest decisions let you influence the expedition without timing clicks.
+- Experience arrives during expeditions. Each program has independent levels, records and currency: Endurance, Impulse or Torque.
+- Finish an expedition to collect research, or let the team automatically repeat after exhaustion. Shared Research Points fund all programs.
+- The landscape changes with expedition distance: city (0–100 m), woodland trail (100 m–1 km), country road (1–10 km), desert (10–100 km), alpine (100–1,000 km), then aurora.
+- Unlock projectile and wheeled programs, then research equipment from paper planes and slingshots to cannons, accelerators, bikes and rockets.
 
-1. **Run** (hold Space / hold on the canvas). Two pools govern a run, like real
-   physiology: a finite **energy reserve** (only depletes — when it's gone the
-   runner **collapses**, the run ends, and a results screen appears) and a fast
-   **stamina** burst pool that exerting spends and easing-off refills from the
-   reserve. No timer; no infinite stamina — pace your breath to go far. Each run
-   rolls a **weather** condition (rain, heatwave, tailwind, mud…) that shifts the
-   stats; the *Acclimatization* nodes dampen its effect.
-2. The **results screen** breaks down the run (distance, top/avg speed in m/s,
-   duration) and the currencies it earned. **Three currencies, three verbs**:
-   - 🔬 **Research** (from distance) → **unlocks** nodes, permanently.
-   - 💡 **Insight** (from speed) → **upgrades** node ranks, permanently.
-   - ⚡ **Flux** (from peak momentum, log-scaled) → **equips** nodes. Flux is a
-     *budget*, not a payment: an equipped node reserves its cost and frees it
-     when unequipped.
-3. Open **The Lab** (the run keeps going behind it) — one full-window node
-   graph where you can see at a glance what's locked, unlockable, unlocked and
-   equipped. The sidebar shows the selected node's actions, your **loadout**
-   with its Flux meter, and **every stat of the current build** with a
-   plain-language explanation of what each one does. Unlocked nodes do
-   *nothing* until equipped — you'll unlock far more than you can power, so
-   the loadout is where the choices happen. **Traversal nodes** (skateboard,
-   bicycle, rocket skates) swap the whole ride: new base stats, new vehicle on
-   screen, one at a time.
-4. **Run again** to go further (or **End run** early to bank what you have).
-   Refresh — your progress is still there.
+The research web contains **108 discoveries** across three programs and shared science. Branches connect through alternative prerequisites and hybrid discoveries requiring two disciplines. Permanent discoveries stay active; optional modules have benefits and tradeoffs with three equipped slots per program. Pan, zoom, fit or hide the detail panel to explore.
 
-**Active vs idle.** Toggle **Auto-run** to loop runs on a conservative
-auto-pilot (idle-friendly). Actively running earns an **active bonus** (up to
-~2.5×) over idling. The simulation runs on a wall-clock accumulator, so a
-hidden/background tab keeps progressing; when the page was fully closed, an
-offline catch-up estimates idle earnings (capped at 8h, reduced efficiency)
-and shows a *Welcome back* modal.
+Progress saves locally in this browser. The journal exports and imports saves. **Reset** clears currencies, levels, discoveries, equipment and history after confirmation. This overhaul uses a new save format; earlier versions are intentionally not migrated.
 
-## Local development
+## Development
 
-```bash
-npm install
-npm run dev        # start the dev server (prints a localhost URL)
+Requires Node.js 20.19+ and npm.
+
+```sh
+npm ci
+npm run dev
+npm test
+npm run build
+npm run preview
 ```
 
-Other scripts:
+In restricted Windows environments, append `-- --configLoader runner` to the build, preview or test commands.
 
-```bash
-npm test           # run the ride-simulation unit tests (Vitest)
-npm run build      # type-check + production build into dist/
-npm run preview    # serve the built dist/ with the Pages base path
+The GitHub Actions workflow tests and builds every push to main, then deploys the dist artifact directly to GitHub Pages.
+
+## 3D assets
+
+The game uses Three.js with original low-poly assets generated in Blender. Blender is needed only to regenerate the assets, never to play the game or build the website.
+
+```sh
+blender --background --python-exit-code 1 --python tools/build_assets.py
 ```
 
-> `npm run preview` serves under the `/Move/` base path, so open the
-> `/Move/` URL it prints (matching GitHub Pages project-page hosting).
+The script was verified with Blender 5.2.2 LTS. It exports `public/models/move-lab.glb` and three researcher portraits. Character limbs have hip, knee, ankle, shoulder and elbow pivots. Runtime inverse kinematics animate ground contact; environment geometry is batched into instanced meshes to reduce draw calls.
 
-## Deploying to GitHub Pages
+## Main source files
 
-Everything lives on `main` — there is **no `gh-pages` branch**. The workflow
-at `.github/workflows/deploy.yml` runs on every push to `main`: it tests,
-builds, and deploys the compiled `dist/` straight to Pages via the official
-`actions/deploy-pages` flow. `actions/configure-pages` (with
-`enablement: true`) sets the repo's Pages source to **"GitHub Actions"**
-automatically, so there is no manual settings step. The game is live at:
+- `src/lab/game.ts`: expedition simulation, stamina, progression, decisions and save validation.
+- `src/lab/research.ts`: programs, equipment and research graph.
+- `src/lab/World.tsx`: rendering, articulated animation and distance-driven environments.
+- `src/lab/Expedition.tsx`: field controls and expedition HUD.
+- `src/lab/ResearchPanel.tsx`: interactive research web.
+- `src/lab/game.test.ts`: simulation, research graph, progression and save tests.
 
-```
-https://<your-username>.github.io/Move/
-```
-
-If a stale `gh-pages` branch still exists from the old setup, it's unused and
-safe to delete (`git push origin --delete gh-pages`).
-
-If you rename the repository, update the one `base` string in
-`vite.config.ts` (`/Move/`) to match the new repo name.
-
-## Architecture (built to grow)
-
-Everything the player progresses through is **data, not code** — the node
-graph, the traversal modes and the currencies are plain typed definitions:
-
-- **`src/data/`** — typed config, no art files.
-  - `types.ts` defines `NodeDef` (unlock/rank/equip costs, per-rank `StatMod`s,
-    prereqs, grid position, optional traversal `mode`), `ModeDef` (base stats +
-    vehicle), `StatKey`, `CurrencyId` and typed **cosmetic slots**
-    (`shoes`/`coat`/`headgear`/`back` tiers — the renderer decides how a tier
-    looks).
-  - `nodes.ts` is the whole game: ~30 nodes across five branches (body, mind,
-    gear, tech, modes) with balance intent documented at the top. **Adding
-    content = adding a node here.**
-  - `modes.ts` defines the rides (on foot → skateboard → bicycle → rocket
-    skates) as base-stat profiles — the same pure sim runs all of them.
-  - `currencies.ts` maps run metrics to the three currencies (🔬 distance,
-    💡 speed, ⚡ log-scaled momentum) and states each one's verb.
-- **`src/sim/ride.ts`** — the **pure** physics. `rideStep(state, stats, exert,
-  dt)` advances one tick (energy reserve + stamina model) with no
-  rendering/state/randomness; `isFinished` ends a run on exhaustion;
-  `simulateRide` runs it headlessly under a policy (offline catch-up and the
-  unit tests in `ride.test.ts`).
-- **`src/game/engine.ts`** — the **run engine**, plain TS with no React and no
-  rendering. Owns the run lifecycle (idle → running → collapsing), rolls
-  weather, applies the auto-run loop and the active-play bonus tracking, and
-  steps the sim on a **wall-clock accumulator** from an interval timer — so a
-  hidden tab catches up losslessly instead of freezing. React subscribes to
-  throttled snapshots (`useSyncExternalStore`); the renderer `peek()`s live
-  state each frame. Unit-tested in `engine.test.ts`.
-- **`src/game/tree.ts`** — the unlock/upgrade/equip rules: prereqs, scaling
-  rank costs, the **Flux budget** (reserved by equipped nodes, freed on
-  unequip), mode exclusivity, stat aggregation from the active mode's base
-  stats + equipped mods (additive then multiplicative passes), and
-  cosmetic/vehicle resolution. Unit-tested in `tree.test.ts`.
-- **`src/render/`** — pure Pixi, consumes the engine read-only.
-  - `walker.ts` draws the scientist **procedurally** (jointed two-segment
-    limbs, speed-scaled gait, collapse pose) plus the vehicles: skateboard
-    (push cycle), bicycle (pedal IK from the saddle, spinning spoked wheels)
-    and rocket skates (flames). Cosmetics apply synchronously — no texture
-    loading, no async rebuild races.
-  - `scenery.ts` generates sky/weather, parallax hills, ground detail and
-    distance signs in **chunks around the camera** (constant cost no matter
-    how far you run), plus the crowd and speed lines.
-  - `stage.ts` composes them and follows the camera; `StageView.tsx` is the
-    thin React mount.
-- **`src/store/gameStore.ts`** — central Zustand store (wallet, `ranks`,
-  `equipped` loadout, best/run counters, auto-run, `introSeen`, `lastActive`,
-  `saveVersion`) persisted to `localStorage`, with a **real `migrate`**
-  (v1 → … → v6) and offline catch-up computed on rehydrate.
-- **`src/ui/`** — React HUD (currencies), live ride bars (stamina, energy,
-  freshness, speed in m/s), **`Lab.tsx`** (the full-window node graph with the
-  loadout + build-stats sidebar; stat explanations live in `statInfo.ts`), the
-  end-of-run **`Results`** screen (titled by how the run ended), the `Intro`
-  story, and `WelcomeBack`.
-
-### Tuning (`src/config.ts`)
-
-One file centralises the knobs you'll want to tweak: physics timestep and the
-**skill mechanic** (`freshness` — holding continuously makes strides weaker, so
-rhythmic *pulsing* beats mashing), engine timing (tick interval, collapse
-length, auto-run gap, hidden-tab catch-up cap), render scale and gait params
-(incl. a `gait.dir` flip if the run cycle ever looks reversed), the tree
-**cost-growth exponent**, the active-play bonus, and the offline-earning rate,
-plus UI hint text. Per-mode physics (a ride's friction/drag/mass/power/energy)
-are its `baseStats` in `src/data/modes.ts`; node values/costs live in
-`src/data/nodes.ts`; weather lives in `src/data/weather.ts`.
-
-### Out of scope (for now)
-
-Electron/Steam, further vehicles beyond the rocket skates, relativistic
-motion, prestige layers, audio, polished art, and any backend or cloud saves.
-The architecture (a data-defined node graph, mode base-stat profiles, a pure
-sim) leaves clear room for all of these without painting us into a corner.
+Earlier simulation modules remain in the source tree as reference; the application entry point uses the expedition system above.

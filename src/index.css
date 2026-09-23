@@ -1,22 +1,59 @@
+@import url("https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap");
 :root {
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-  color: #1a202c;
-  --panel: #ffffff;
-  --accent: #2b6cb0;
+  font-family: "DM Sans", Arial, sans-serif;
+  color: #e9eee7;
+  background: #111b20;
+  font-synthesis: none;
+  font-weight: 400;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
 }
-
 * {
   box-sizing: border-box;
 }
-
-html,
-body,
-#root {
-  margin: 0;
-  height: 100%;
-}
-
 body {
-  background: #e2e8f0;
-  overflow: hidden; /* full-window app — never scroll the page */
+  margin: 0;
+}
+button,
+input,
+select {
+  font: inherit;
+}
+button,
+a,
+input,
+select {
+  -webkit-tap-highlight-color: transparent;
+}
+button {
+  cursor: pointer;
+  color: inherit;
+  border: 0;
+  transition:
+    background 0.18s,
+    border-color 0.18s;
+}
+button:disabled {
+  cursor: not-allowed;
+}
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid #c5f484;
+  outline-offset: 4px;
+}
+button,
+a {
+  touch-action: manipulation;
+}
+::selection {
+  background: #b9ec75;
+  color: #122027;
+}
+a {
+  color: inherit;
+}
+button:hover:not(:disabled) {
+  filter: brightness(1.08);
 }
