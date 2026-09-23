@@ -1,344 +1,341 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import {
   NODES,
   NODE_MAP,
   PROGRAMS,
   LANES,
-  type Program,
   type ResearchNode,
 } from "./research";
-import { available, afford, research, equip, type Save } from "./game";
-const W = 2170,
-  H = 850,
-  NW = 182,
-  NH = 100;
-const position = (n: ResearchNode) => ({
-  x: 65 + n.tier * 250 + (n.tier === 0 && n.lane >= 2 ? 85 : 0),
-  y: 85 + n.lane * 185 + (n.tier % 2 ? 30 : 0),
-});
+import {
+  available,
+  afford,
+  research,
+  totalTrials,
+  distance,
+  type Save,
+} from "./game";
 export default function Research({
   game,
   setGame,
+  onRun,
 }: {
   game: Save;
   setGame: React.Dispatch<React.SetStateAction<Save>>;
+  onRun: () => void;
 }) {
-  const p = game.program;
-  const [global, setGlobal] = useState(false);
-  const tree: Program | "global" = global ? "global" : p;
-  const [selected, setSelected] = useState(`${tree}-0-0`);
-  const [zoom, setZoom] = useState(0.88);
-  const [filter, setFilter] = useState(false);
-  const [details, setDetails] = useState(true);
-  const node = NODE_MAP.get(selected)!;
-  const viewport = useRef<HTMLDivElement>(null);
-  const drag = useRef<{ x: number; y: number; sx: number; sy: number } | null>(
-    null,
-  );
+  const [shared, setShared] = useState(false);
+  const [filter, setFilter] = useState<"next" | "all" | "owned">("next");
+  const [selected, setSelected] = useState<string | null>(null);
+  const tree = shared ? "global" : game.program;
   const nodes = NODES.filter((n) => n.program === tree);
-  const activeModules = game.modules.filter(
-    (id) => NODE_MAP.get(id)?.program === p,
+  const ready = nodes.filter((n) => afford(game, n.id)).length;
+  const visible = nodes.filter((n) =>
+    filter === "owned"
+      ? game.researched.includes(n.id)
+      : filter === "all"
+        ? true
+        : available(game, n.id),
   );
-  const setView = (shared: boolean) => {
-    setGlobal(shared);
-    setSelected((shared ? "global" : p) + "-0-0");
-    if (viewport.current) {
-      viewport.current.scrollLeft = 0;
-      viewport.current.scrollTop = 0;
-    }
+  const detail = selected ? NODE_MAP.get(selected) : null;
+  const last = game.history[0];
+  const inspect = (id: string) => {
+    const n = NODE_MAP.get(id);
+    if (!n) return;
+    setSelected(id);
+    if (n.program === "global") setShared(true);
+    else if (n.program === game.program) setShared(false);
   };
+  const status = (n: ResearchNode) =>
+    game.researched.includes(n.id)
+      ? "Discovered"
+      : afford(game, n.id)
+        ? "Can afford"
+        : available(game, n.id)
+          ? "Save up"
+          : "Locked";
   return (
-    <section className="web-layout">
-      <div className="web-toolbar">
-        <div className="tree-tabs">
-          <button
-            className={!global ? "active" : ""}
-            onClick={() => setView(false)}
-          >
-            {PROGRAMS[p].short} research
-          </button>
-          <button
-            className={global ? "active" : ""}
-            onClick={() => setView(true)}
-          >
-            Shared science
-          </button>
+    <div className="research-page">
+      <div className="section-title">
+        <div>
+          <span className="eyebrow">Make the next run better</span>
+          <h1>Research</h1>
+          <p>Permanent discoveries. Choose your own path.</p>
         </div>
-        <div className="web-legend">
-          <span>━━ Required</span>
-          <span>┄┄ Either path</span>
-          <span>◇ Optional build module</span>
-        </div>
-        <label className="available-toggle">
-          <input
-            type="checkbox"
-            checked={filter}
-            onChange={(e) => setFilter(e.target.checked)}
-          />
-          Highlight available
-        </label>
-        <div className="zoom-controls">
-          <button
-            aria-label="Zoom out"
-            onClick={() => setZoom((z) => Math.max(0.4, z - 0.15))}
-          >
-            −
-          </button>
-          <span>{Math.round(zoom * 100)}%</span>
-          <button
-            aria-label="Zoom in"
-            onClick={() => setZoom((z) => Math.min(1.5, z + 0.15))}
-          >
-            +
-          </button>
-          <button
-            onClick={() =>
-              setZoom(
-                Math.max(0.4, (viewport.current?.clientWidth ?? 1200) / W),
-              )
-            }
-          >
-            Fit
-          </button>
-          <button onClick={() => setDetails((d) => !d)}>
-            {details ? "Hide details" : "Show details"}
-          </button>
-        </div>
+        <button className="primary" onClick={onRun}>
+          Back to the road →
+        </button>
       </div>
-      <div className="web-workspace">
-        <div
-          className="web-viewport"
-          ref={viewport}
-          onPointerDown={(e) => {
-            if ((e.target as HTMLElement).closest("button")) return;
-            drag.current = {
-              x: e.clientX,
-              y: e.clientY,
-              sx: e.currentTarget.scrollLeft,
-              sy: e.currentTarget.scrollTop,
-            };
-            e.currentTarget.setPointerCapture(e.pointerId);
-          }}
-          onPointerMove={(e) => {
-            if (!drag.current) return;
-            e.currentTarget.scrollLeft =
-              drag.current.sx - (e.clientX - drag.current.x);
-            e.currentTarget.scrollTop =
-              drag.current.sy - (e.clientY - drag.current.y);
-          }}
-          onPointerUp={() => {
-            drag.current = null;
-          }}
-          onPointerCancel={() => {
-            drag.current = null;
-          }}
-        >
-          <div style={{ width: W * zoom, height: H * zoom }}>
-            <div
-              className="web-canvas"
-              style={{ width: W, height: H, transform: `scale(${zoom})` }}
-            >
-              {LANES[tree].map((lane, i) => (
-                <div
-                  className="web-lane-label"
-                  key={lane}
-                  style={{ top: i * 185 + 45, left: 65 }}
-                >
-                  0{i + 1} / {lane.toUpperCase()}
-                </div>
-              ))}
-              <svg
-                className="web-edges"
-                width={W}
-                height={H}
-                aria-hidden="true"
-              >
-                {nodes.flatMap((n) =>
-                  [
-                    ...n.requires.map((id) => ({ id, alt: false })),
-                    ...(n.anyOf ?? []).map((id) => ({ id, alt: true })),
-                  ].map(({ id, alt }) => {
-                    const parent = NODE_MAP.get(id);
-                    if (!parent || parent.program !== tree) return null;
-                    const a = position(parent),
-                      b = position(n);
-                    const x1 = a.x + NW,
-                      y1 = a.y + NH / 2,
-                      x2 = b.x,
-                      y2 = b.y + NH / 2;
-                    const owned = game.researched.includes(id);
-                    return (
-                      <path
-                        key={id + "-" + n.id}
-                        d={
-                          x2 > x1
-                            ? `M${x1} ${y1} C${x1 + 70} ${y1},${x2 - 70} ${y2},${x2} ${y2}`
-                            : `M${a.x + NW / 2} ${a.y + NH} C${a.x + NW / 2} ${a.y + NH + 40},${b.x - 35} ${y2},${b.x} ${y2}`
-                        }
-                        fill="none"
-                        stroke={owned ? "#badf78" : "#49615d"}
-                        strokeWidth={owned ? 2.4 : 1.5}
-                        strokeDasharray={alt ? "5 6" : undefined}
-                      />
-                    );
-                  }),
-                )}
-              </svg>
-              {nodes.map((n) => {
-                const pos = position(n),
-                  owned = game.researched.includes(n.id),
-                  can = available(game, n.id);
-                return (
-                  <button
-                    key={n.id}
-                    style={{
-                      left: pos.x,
-                      top: pos.y,
-                      width: NW,
-                      height: NH,
-                      opacity: filter && !can && !owned ? 0.28 : 1,
-                    }}
-                    className={`web-node ${owned ? "owned" : can ? "available" : "locked-node"} ${selected === n.id ? "focused" : ""}`}
-                    onClick={() => {
-                      setSelected(n.id);
-                      setDetails(true);
-                    }}
-                  >
-                    <div className="node-top">
-                      <span>{n.kind === "module" ? "◇" : "✧"}</span>
-                      <small>
-                        {owned
-                          ? "DISCOVERED"
-                          : n.requires.length > 1
-                            ? "HYBRID"
-                            : n.anyOf?.length
-                              ? "ALTERNATE PATH"
-                              : "DISCOVERY"}
-                      </small>
-                      <span>{owned ? "✓" : can ? "↗" : ""}</span>
-                    </div>
-                    <strong>{n.name}</strong>
-                    <div className="web-node-cost">
-                      {owned
-                        ? n.kind === "module"
-                          ? game.modules.includes(n.id)
-                            ? "EQUIPPED"
-                            : "AVAILABLE TO EQUIP"
-                          : "PERMANENT"
-                        : n.cost +
-                          " RP" +
-                          (n.localCost
-                            ? " + " +
-                              n.localCost +
-                              " " +
-                              PROGRAMS[n.program as Program].currency
-                            : "")}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+      {last && (
+        <div className="run-receipt">
+          <b>Last run · {distance(last.distance)}</b>
+          <span>+{last.science} research</span>
+          <span>
+            +{last.funds} {PROGRAMS[last.program].currency}
+          </span>
+          <span>+{last.xp} XP</span>
         </div>
-        {details && (
-          <aside className="web-detail">
-            <div className="card-kicker">
-              DISCOVERY DETAILS{" "}
-              <span>
-                {game.researched.length} / {NODES.length}
-              </span>
-            </div>
-            <div className="web-detail-symbol">
-              {node.kind === "module" ? "◇" : "✧"}
-            </div>
-            <div className="eyebrow">{LANES[node.program][node.lane]}</div>
-            <h2>{node.name}</h2>
-            <p>{node.description}</p>
-            <div className="detail-rule">
-              <span>Research</span>
-              <b>{node.cost} RP</b>
-            </div>
-            {node.program !== "global" && (
-              <div className="detail-rule">
-                <span>{PROGRAMS[node.program].currency}</span>
-                <b>
-                  {node.localCost} /{" "}
-                  {Math.floor(game.progress[node.program].funds)} owned
-                </b>
-              </div>
+      )}
+      <div className="research-tools">
+        <div className="segmented">
+          <button
+            className={!shared ? "selected" : ""}
+            onClick={() => {
+              setShared(false);
+              setSelected(null);
+            }}
+          >
+            {PROGRAMS[game.program].short}
+          </button>
+          {totalTrials(game) >= 3 && (
+            <button
+              className={shared ? "selected" : ""}
+              onClick={() => {
+                setShared(true);
+                setSelected(null);
+              }}
+            >
+              Shared science
+            </button>
+          )}
+        </div>
+        <div className="segmented" aria-label="Research filter">
+          {(
+            [
+              ["next", "Next discoveries"],
+              ["all", "All discoveries"],
+              ["owned", "Discovered"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              className={filter === id ? "selected" : ""}
+              onClick={() => setFilter(id)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <span className="research-budget">
+          <b>{Math.floor(game.science)} RP</b>
+          {!shared && (
+            <span>
+              {" "}
+              · {Math.floor(game.progress[game.program].funds)}{" "}
+              {PROGRAMS[game.program].currency}
+            </span>
+          )}
+        </span>
+      </div>
+      <div className="research-overview">
+        <b>
+          {ready} {ready === 1 ? "discovery" : "discoveries"} you can afford
+        </b>
+        <span>
+          Research stays active forever. Equipment is managed separately.
+        </span>
+      </div>
+      <div className={"research-layout " + (detail ? "with-detail" : "")}>
+        <div className="discovery-groups">
+          {LANES[tree].map((lane, i) => {
+            const group = visible.filter((n) => n.lane === i);
+            return (
+              <section className="discovery-group" key={lane}>
+                <h2>
+                  <span>0{i + 1}</span>
+                  {lane}
+                </h2>
+                {group.length ? (
+                  group.map((n) => {
+                    const owned = game.researched.includes(n.id),
+                      can = afford(game, n.id),
+                      open = available(game, n.id);
+                    return (
+                      <article
+                        key={n.id}
+                        className={
+                          "discovery " +
+                          (can
+                            ? "affordable"
+                            : owned
+                              ? "owned"
+                              : open
+                                ? "saving"
+                                : "locked") +
+                          (selected === n.id ? " inspecting" : "")
+                        }
+                      >
+                        <div className="discovery-top">
+                          <span className="status-pill">{status(n)}</span>
+                          <span className="tier">Tier {n.tier + 1}</span>
+                        </div>
+                        <button
+                          className="discovery-name"
+                          onClick={() => inspect(n.id)}
+                        >
+                          {n.name}
+                        </button>
+                        <p>{n.description}</p>
+                        {!owned && (
+                          <div className="cost-line">
+                            <span
+                              className={
+                                game.science >= n.cost ? "enough" : "short"
+                              }
+                            >
+                              {n.cost} RP
+                            </span>
+                            {n.localCost > 0 && (
+                              <span
+                                className={
+                                  game.progress[game.program].funds >=
+                                  n.localCost
+                                    ? "enough"
+                                    : "short"
+                                }
+                              >
+                                {n.localCost} {PROGRAMS[game.program].currency}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        {!owned && open && !can && (
+                          <small className="shortfall">
+                            Need{" "}
+                            {[
+                              [
+                                Math.max(0, n.cost - Math.floor(game.science)),
+                                "RP",
+                              ],
+                              [
+                                Math.max(
+                                  0,
+                                  n.localCost -
+                                    Math.floor(
+                                      game.progress[game.program].funds,
+                                    ),
+                                ),
+                                PROGRAMS[game.program].currency,
+                              ],
+                            ]
+                              .filter(([v]) => Number(v) > 0)
+                              .map(([v, label]) => v + " " + label)
+                              .join(" + ")}{" "}
+                            more
+                          </small>
+                        )}
+                        <div className="discovery-actions">
+                          {can ? (
+                            <button
+                              className="primary"
+                              onClick={() => setGame((s) => research(s, n.id))}
+                            >
+                              Research · {n.cost} RP
+                            </button>
+                          ) : (
+                            <button
+                              className="secondary"
+                              onClick={() => inspect(n.id)}
+                            >
+                              {owned
+                                ? "View discovery"
+                                : open
+                                  ? "View details"
+                                  : "See requirements"}
+                            </button>
+                          )}
+                          {can && (
+                            <button
+                              className="text-button"
+                              onClick={() => inspect(n.id)}
+                              aria-label={"Details for " + n.name}
+                            >
+                              Details
+                            </button>
+                          )}
+                        </div>
+                      </article>
+                    );
+                  })
+                ) : (
+                  <p className="empty-lane">
+                    {filter === "owned"
+                      ? "No discoveries yet."
+                      : filter === "next"
+                        ? "Open a connected path in another discipline."
+                        : "No discoveries."}
+                  </p>
+                )}
+              </section>
+            );
+          })}
+        </div>
+        {detail && (
+          <aside className="research-detail">
+            <button
+              className="detail-close"
+              aria-label="Close discovery details"
+              onClick={() => setSelected(null)}
+            >
+              ×
+            </button>
+            <span className="eyebrow">
+              {LANES[detail.program][detail.lane]}
+            </span>
+            <h2>{detail.name}</h2>
+            <p>{detail.description}</p>
+            {!detail.requires.length && !detail.anyOf?.length && (
+              <p>This is a starting discovery. No prerequisites.</p>
             )}
-            {node.requires.length > 0 && (
-              <div className="web-requirements">
-                <small>REQUIRES ALL</small>
-                {node.requires.map((id) => (
-                  <button key={id} onClick={() => setSelected(id)}>
+            {detail.requires.length > 0 && (
+              <div className="requirements">
+                <b>Discover all of these</b>
+                {detail.requires.map((id) => (
+                  <button onClick={() => inspect(id)} key={id}>
                     {game.researched.includes(id) ? "✓" : "○"}{" "}
                     {NODE_MAP.get(id)?.name}
                   </button>
                 ))}
               </div>
             )}
-            {!!node.anyOf?.length && (
-              <div className="web-requirements">
-                <small>REQUIRES EITHER PATH</small>
-                {node.anyOf.map((id) => (
-                  <button key={id} onClick={() => setSelected(id)}>
+            {!!detail.anyOf?.length && (
+              <div className="requirements">
+                <b>Choose either route</b>
+                {detail.anyOf.map((id) => (
+                  <button onClick={() => inspect(id)} key={id}>
                     {game.researched.includes(id) ? "✓" : "○"}{" "}
                     {NODE_MAP.get(id)?.name}
                   </button>
                 ))}
               </div>
             )}
-            {game.researched.includes(node.id) ? (
-              node.kind === "module" ? (
-                <button
-                  className="primary"
-                  onClick={() => setGame((s) => equip(s, node.id))}
-                >
-                  {game.modules.includes(node.id)
-                    ? "Unequip module"
-                    : "Equip module"}
-                </button>
-              ) : (
-                <div className="discovered">✓ Permanent discovery active</div>
-              )
-            ) : (
-              <button
-                className="primary"
-                disabled={!afford(game, node.id)}
-                onClick={() => setGame((s) => research(s, node.id))}
-              >
-                {afford(game, node.id)
-                  ? "Research discovery ↗"
-                  : available(game, node.id)
-                    ? "More resources needed"
-                    : "Follow a connected path"}
-              </button>
-            )}
-            <div className="module-slots">
-              <div className="control-label">
-                YOUR BUILD · {activeModules.length}/3
-              </div>
-              {[0, 1, 2].map((i) => (
-                <button
-                  key={i}
-                  disabled={!activeModules[i]}
-                  onClick={() => setGame((s) => equip(s, activeModules[i]))}
-                >
-                  {activeModules[i]
-                    ? NODE_MAP.get(activeModules[i])?.name + " ×"
-                    : "Empty module slot"}
+            <div className="requirements">
+              <b>Opens paths toward</b>
+              {NODES.filter(
+                (n) =>
+                  n.requires.includes(detail.id) ||
+                  n.anyOf?.includes(detail.id),
+              ).map((n) => (
+                <button key={n.id} onClick={() => inspect(n.id)}>
+                  {n.name} →
                 </button>
               ))}
             </div>
-            <p className="small-note">
-              Drag the canvas to explore. Hybrid discoveries combine
-              disciplines. Dashed paths give you a choice of prerequisites.
-              Modules change your build without deleting research.
-            </p>
+            <button
+              className="primary"
+              disabled={!afford(game, detail.id)}
+              onClick={() => setGame((s) => research(s, detail.id))}
+            >
+              {game.researched.includes(detail.id)
+                ? "Permanently active"
+                : afford(game, detail.id)
+                  ? "Research · " + detail.cost + " RP"
+                  : available(game, detail.id)
+                    ? "More resources needed"
+                    : "Requirements not met"}
+            </button>
           </aside>
         )}
       </div>
-    </section>
+    </div>
   );
 }

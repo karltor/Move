@@ -1,3 +1,4 @@
+import { solveLeg } from "./animation";
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
@@ -419,20 +420,10 @@ export default function World({
               ? Math.sin((phase01 - 1) * Math.PI) * (walk ? 0.13 : 0.3)
               : 0;
           const dy = hipHeight - 0.09 - footY;
-          const len = Math.min(0.859, Math.hypot(footX, dy));
-          const bend =
-            Math.PI -
-            Math.acos(
-              THREE.MathUtils.clamp(
-                (0.43 * 0.43 + 0.43 * 0.43 - len * len) / (2 * 0.43 * 0.43),
-                -1,
-                1,
-              ),
-            );
-          const upper = Math.atan2(footX, dy) - bend / 2;
-          if (leg) leg.rotation.z = upper;
-          if (knee) knee.rotation.z = bend;
-          if (foot) foot.rotation.z = -upper - bend;
+          const pose = solveLeg(footX, dy);
+          if (leg) leg.rotation.z = pose.upper;
+          if (knee) knee.rotation.z = pose.knee;
+          if (foot) foot.rotation.z = pose.foot;
           if (arm)
             arm.rotation.z = running
               ? Math.sin(phase) * 0.6

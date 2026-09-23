@@ -1,59 +1,63 @@
-@import url("https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap");
 :root {
-  font-family: "DM Sans", Arial, sans-serif;
-  color: #e9eee7;
-  background: #111b20;
+  font-family: "DM Sans", sans-serif;
+  color: #243340;
+  background: #f3f5f7;
   font-synthesis: none;
-  font-weight: 400;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+  font-weight: 400;
 }
 * {
   box-sizing: border-box;
 }
 body {
   margin: 0;
+  min-width: 320px;
 }
 button,
 input,
 select {
   font: inherit;
 }
+button {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: default;
+}
 button,
 a,
 input,
 select {
-  -webkit-tap-highlight-color: transparent;
-}
-button {
-  cursor: pointer;
-  color: inherit;
-  border: 0;
-  transition:
-    background 0.18s,
-    border-color 0.18s;
-}
-button:disabled {
-  cursor: not-allowed;
+  touch-action: manipulation;
 }
 button:focus-visible,
 a:focus-visible,
-input:focus-visible,
-select:focus-visible {
-  outline: 2px solid #c5f484;
-  outline-offset: 4px;
+select:focus-visible,
+input:focus-visible {
+  outline: 3px solid #266bd0;
+  outline-offset: 3px;
 }
-button,
-a {
-  touch-action: manipulation;
+h1,
+h2,
+h3,
+p {
+  margin: 0;
 }
-::selection {
-  background: #b9ec75;
-  color: #122027;
+h1,
+h2,
+h3 {
+  font-family: Manrope, "DM Sans", sans-serif;
+  letter-spacing: -0.035em;
 }
-a {
+button {
   color: inherit;
 }
-button:hover:not(:disabled) {
-  filter: brightness(1.08);
+a {
+  color: #245eb0;
+}
+::selection {
+  background: #d3e5ff;
+  color: #142b48;
 }

@@ -89,7 +89,7 @@ export default function Records({
   return (
     <section className="guide">
       <div>
-        <span className="eyebrow">WELCOME TO MOVE</span>
+        <span className="eyebrow">SETTINGS & HELP</span>
         <h2>
           Make things go faster.
           <br />
@@ -109,17 +109,17 @@ export default function Records({
             [
               "02",
               "Manage the journey",
-              "Sustainable pace conserves energy. Push hard goes faster but drains stamina. Walk to recover, use three field supplies and make route decisions. Fatigue gradually reduces recoverable capacity.",
+              "Sustainable pace conserves energy. Push hard goes faster but drains stamina. Walk to recover and make route decisions. Field logistics research unlocks supplies later. Fatigue gradually reduces recoverable capacity.",
             ],
             [
               "03",
               "Follow your curiosity",
-              "Research is shared. Endurance, Impulse and Torque belong to their own programs. Permanent discoveries always apply. Equip up to three optional modules per program. Follow alternate paths and combine disciplines for hybrid discoveries.",
+              "Research is shared. Endurance, Impulse and Torque belong to their own programs. Every discovery is permanent. Follow alternate paths and combine disciplines for hybrid discoveries. Find equipment during runs and equip one piece per slot in the Equipment menu.",
             ],
             [
               "04",
               "Build something unreasonable",
-              "Unlock projectiles after 400 m and 120 RP, wheels after 1.2 km and 350 RP. Research new equipment, then select it on the subject card between expeditions.",
+              "Unlock projectiles after 400 m and 120 RP, wheels after 1.2 km and 350 RP. Research new vehicles, then choose your test vehicle between runs. Rare equipment finds become more likely the further you travel.",
             ],
           ].map(([num, title, desc]) => (
             <article key={num}>
@@ -133,7 +133,7 @@ export default function Records({
         </div>
       </div>
       <aside>
-        <h3>Your research stays yours.</h3>
+        <h3>Save & backup</h3>
         <p>
           The game saves automatically in this browser. Export a backup to move
           your progress to another device.

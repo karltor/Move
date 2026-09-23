@@ -1,3 +1,4 @@
+import { rollGear, random, validateGear, type Gear } from "./equipment";
 import {
   NODES,
   NODE_MAP,
@@ -31,6 +32,9 @@ export interface Trial {
   restTime: number;
   lastMilestone: number;
   lastXP: number;
+  rng: number;
+  nextDrop: number;
+  drops: string[];
 }
 export interface Result {
   id: number;
@@ -50,6 +54,10 @@ export interface Save {
   progress: Record<Program, Progress>;
   researched: string[];
   modules: string[];
+  inventory: Gear[];
+  equipped: string[];
+  nextGear: number;
+  lastDrop: string | null;
   auto: boolean;
   pace: "steady" | "push" | "recover";
   trial: Trial | null;
@@ -154,7 +162,11 @@ export function fresh(): Save {
     },
     researched: [],
     modules: [],
-    auto: true,
+    inventory: [],
+    equipped: [],
+    nextGear: 1,
+    lastDrop: null,
+    auto: false,
     pace: "steady",
     trial: null,
     rest: 0,
@@ -172,14 +184,14 @@ export function stats(s: Save, p = s.program) {
   const out: Record<Stat, number> = { speed: 1, stamina: 1, yield: 1, xp: 1 };
   for (const id of s.researched) {
     const n = NODE_MAP.get(id);
-    if (
-      n &&
-      (n.program === p || n.program === "global") &&
-      (n.kind === "permanent" || s.modules.includes(id))
-    ) {
+    if (n && (n.program === p || n.program === "global")) {
       out[n.stat] += n.power;
       if (n.penalty) out[n.penalty] -= n.penaltyPower ?? 0;
     }
+  }
+  for (const item of s.inventory) {
+    if (item.program === p && s.equipped.includes(item.id))
+      for (const affix of item.affixes) out[affix.stat] += affix.value;
   }
   const lv = level(s.progress[p].xp);
   out.stamina += (lv - 1) * 0.08;
@@ -235,20 +247,32 @@ export function research(s: Save, id: string): Save {
         : "Permanent research installed."),
   };
 }
-export function equip(s: Save, id: string): Save {
-  const n = NODE_MAP.get(id);
-  if (!n || n.kind !== "module" || !s.researched.includes(id)) return s;
-  if (s.modules.includes(id))
-    return { ...s, modules: s.modules.filter((x) => x !== id) };
-  const other = s.modules.filter((x) => NODE_MAP.get(x)?.program === n.program);
-  if (other.length >= 3)
-    return {
-      ...s,
-      notice:
-        "Three module slots per program. Unequip one to change your build.",
-    };
-  return { ...s, modules: [...s.modules, id], notice: n.name + " equipped." };
+export function equipGear(s: Save, id: string): Save {
+  const item = s.inventory.find((g) => g.id === id);
+  if (!item || s.trial) return s;
+  if (s.equipped.includes(id))
+    return { ...s, equipped: s.equipped.filter((x) => x !== id) };
+  const equipped = s.equipped.filter((x) => {
+    const g = s.inventory.find((g) => g.id === x);
+    return g && (g.program !== item.program || g.slot !== item.slot);
+  });
+  return {
+    ...s,
+    equipped: [...equipped, id],
+    notice: item.name + " equipped.",
+  };
 }
+export function salvageGear(s: Save, id: string): Save {
+  const item = s.inventory.find((g) => g.id === id);
+  if (!item || s.equipped.includes(id) || s.trial) return s;
+  return {
+    ...s,
+    inventory: s.inventory.filter((g) => g.id !== id),
+    science: s.science + item.affixes.length * 5,
+  };
+}
+export const suppliesUnlocked = (s: Save) =>
+  s.researched.includes("global-1-1");
 export function selectProgram(s: Save, p: Program): Save {
   if (s.program === p || s.trial) return s;
   if (!s.unlocked.includes(p)) {
@@ -272,7 +296,10 @@ export function selectProgram(s: Save, p: Program): Save {
       " selected. All research and training stays with the team.",
   };
 }
-export function start(s: Save): Save {
+export function start(
+  s: Save,
+  seed = Math.floor(Math.random() * 4294967296),
+): Save {
   return s.trial
     ? s
     : {
@@ -286,7 +313,7 @@ export function start(s: Save): Save {
           fatigue: 0,
           peak: 0,
           samples: 0,
-          rations: 3,
+          rations: suppliesUnlocked(s) ? 3 : 0,
           supplyCooldown: 0,
           nextEvent: 65,
           event: null,
@@ -294,13 +321,22 @@ export function start(s: Save): Save {
           restTime: 0,
           lastMilestone: 0,
           lastXP: 0,
+          rng: seed >>> 0,
+          nextDrop: 40 + ((seed >>> 0) % 26),
+          drops: [],
         },
         notice:
           "Expedition underway. Pace, supplies and route decisions determine your reach.",
       };
 }
 export function supply(s: Save): Save {
-  if (!s.trial || s.trial.rations <= 0 || s.trial.supplyCooldown > 0) return s;
+  if (
+    !suppliesUnlocked(s) ||
+    !s.trial ||
+    s.trial.rations <= 0 ||
+    s.trial.supplyCooldown > 0
+  )
+    return s;
   const t = s.trial;
   const capacity = 100 * stats(s).stamina;
   return {
@@ -450,7 +486,7 @@ export function step(s: Save, dt: number): Save {
     t.event = null;
     t.nextEvent = t.time + 75;
   }
-  if (t.event === null && t.time >= t.nextEvent)
+  if (totalTrials(s) > 0 && t.event === null && t.time >= t.nextEvent)
     t.event = Math.floor((t.nextEvent - 65) / 75) % 3;
   const resting = t.restTime > 0;
   t.restTime = Math.max(0, t.restTime - dt);
@@ -508,7 +544,35 @@ export function step(s: Save, dt: number): Save {
     };
     t.lastXP = xpTick;
   }
-  const next = { ...s, science, progress, trial: t };
+  let next = { ...s, science, progress, trial: t };
+  if (t.time >= t.nextDrop) {
+    const [roll, seed] = random(t.rng);
+    t.rng = seed;
+    t.nextDrop = t.time + 45 + Math.floor(roll * 40);
+    if (roll < 0.8 || s.inventory.length === 0) {
+      const drop = rollGear(s.program, t.distance, t.rng, s.nextGear);
+      t.rng = drop.seed;
+      if (s.inventory.length < 90) {
+        t.drops = [...t.drops, drop.gear.id];
+        next = {
+          ...next,
+          inventory: [...s.inventory, drop.gear],
+          nextGear: s.nextGear + 1,
+          lastDrop: drop.gear.id,
+          notice:
+            drop.gear.rarity +
+            " find: " +
+            drop.gear.name +
+            ". Equip it between runs.",
+        };
+      } else
+        next = {
+          ...next,
+          notice:
+            "Equipment storage is full. Recycle spare pieces between runs to make room.",
+        };
+    }
+  }
   return t.energy <= 0 || maxEnergy <= 1 ? finish(next) : next;
 }
 const number = (n: unknown, d = 0) =>
@@ -529,16 +593,25 @@ export function restore(raw: string | null, now = Date.now()): Save {
     s.researched = NODES.filter(
       (n) => Array.isArray(x.researched) && x.researched.includes(n.id),
     ).map((n) => n.id);
-    s.modules = keys.flatMap((k) =>
-      s.researched
-        .filter(
-          (id) =>
-            NODE_MAP.get(id)?.program === k &&
-            NODE_MAP.get(id)?.kind === "module" &&
-            Array.isArray(x.modules) &&
-            x.modules.includes(id),
+    s.modules = [];
+    s.inventory = validateGear(x.inventory);
+    s.equipped = [];
+    for (const g of s.inventory) {
+      if (
+        Array.isArray(x.equipped) &&
+        x.equipped.includes(g.id) &&
+        !s.inventory.some(
+          (other) =>
+            other.program === g.program &&
+            other.slot === g.slot &&
+            s.equipped.includes(other.id),
         )
-        .slice(0, 3),
+      )
+        s.equipped.push(g.id);
+    }
+    s.nextGear = Math.max(
+      Math.floor(number(x.nextGear, 1)),
+      ...s.inventory.map((g) => (Number(g.id.replace("gear-", "")) || 0) + 1),
     );
     for (const k of keys) {
       const p = x.progress?.[k] ?? {};
@@ -607,7 +680,14 @@ export function restore(raw: string | null, now = Date.now()): Save {
       s.trial = {
         ...x.trial,
         speed: 0,
-        rations: Math.min(3, x.trial.rations),
+        rations: suppliesUnlocked(s) ? Math.min(3, x.trial.rations) : 0,
+        rng: number(x.trial.rng, 123456789) >>> 0,
+        nextDrop: number(x.trial.nextDrop, x.trial.time + 50),
+        drops: Array.isArray(x.trial.drops)
+          ? x.trial.drops.filter((id: string) =>
+              s.inventory.some((g) => g.id === id),
+            )
+          : [],
         route: ["normal", "shade", "fast"].includes(x.trial.route)
           ? x.trial.route
           : "normal",

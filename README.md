@@ -4,18 +4,20 @@ A browser incremental game about a research team trying to make things move fast
 
 ## Play
 
-Start a human expedition in the Field lab. A fresh scientist can sustain a run for about five minutes. Stamina, accumulated fatigue, pace, supplies and research determine how far the expedition goes.
+Start a run with the single visible start button. Research appears after the first completed run, equipment after the first find, and shared science and automation after three runs. A fresh scientist can sustain a run for about five minutes. Stamina, accumulated fatigue, pace, supplies and research determine how far the expedition goes.
 
-- **Sustainable** pace balances distance and energy. **Push hard** spends stamina for speed. **Walk & recover** restores energy, but accumulated fatigue lowers recoverable capacity.
-- Three field rations and optional route, sampling and rest decisions let you influence the expedition without timing clicks.
+- **Steady** pace balances distance and energy. **Push** spends stamina for speed. **Recover** restores energy, but accumulated fatigue lowers recoverable capacity.
+- Optional route, sampling and rest decisions unlock after the first run. Field logistics research later unlocks three supplies per run; none are given at the start.
 - Experience arrives during expeditions. Each program has independent levels, records and currency: Endurance, Impulse or Torque.
-- Finish an expedition to collect research, or let the team automatically repeat after exhaustion. Shared Research Points fund all programs.
+- Finishing a run collects research and takes you to Research. Automatic repetition is optional and unlocks after three runs. Shared Research Points fund all programs.
 - The landscape changes with expedition distance: city (0–100 m), woodland trail (100 m–1 km), country road (1–10 km), desert (10–100 km), alpine (100–1,000 km), then aurora.
 - Unlock projectile and wheeled programs, then research equipment from paper planes and slingshots to cannons, accelerators, bikes and rockets.
 
-The research web contains **108 discoveries** across three programs and shared science. Branches connect through alternative prerequisites and hybrid discoveries requiring two disciplines. Permanent discoveries stay active; optional modules have benefits and tradeoffs with three equipped slots per program. Pan, zoom, fit or hide the detail panel to explore.
+The research web contains **108 discoveries** across three programs and shared science. Branches connect through alternative prerequisites and hybrid discoveries requiring two disciplines. All discoveries are permanent. The default research view shows the available frontier by discipline, clear affordability and resource shortfalls. Details expose AND/OR prerequisites and the paths a discovery opens, without drawing lines through other cards. The full catalog is available on demand.
 
-Progress saves locally in this browser. The journal exports and imports saves. **Reset** clears currencies, levels, discoveries, equipment and history after confirmation. This overhaul uses a new save format; earlier versions are intentionally not migrated.
+Equipment randomly drops during runs. Distance improves rarity odds, but lucky finds are possible from the beginning. Common gear has one +5% bonus; Uncommon, Rare and Epic gear have two, three and four bonuses. Equip one piece per slot (footwear, outfit, instrument) per program between runs. Replacing an item shows the stat differences. Spare items can be recycled for research. Drop RNG and the next drop time are saved to prevent refresh rerolls.
+
+Progress saves locally in this browser. Settings exports and imports saves. **Reset** clears currencies, levels, discoveries, equipment and history after confirmation. Existing expedition saves retain progression; previously optional research is now permanent. Equipment starts empty.
 
 ## Development
 

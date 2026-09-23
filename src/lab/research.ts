@@ -62,7 +62,7 @@ export const PROGRAMS = {
   },
 };
 export const LANES: Record<Program | "global", string[]> = {
-  runner: ["Physiology", "Technique", "Equipment", "Experimental"],
+  runner: ["Physiology", "Technique", "Engineering", "Experimental"],
   projectile: [
     "Throwing arm",
     "Aerodynamics",
@@ -95,9 +95,9 @@ const names: Record<Program, string[][]> = {
       "Perfect motion",
     ],
     [
-      "Track shoes",
-      "Carbon soles",
-      "Compression kit",
+      "Footwear design",
+      "Composite materials",
+      "Compression fabrics",
       "Active cooling",
       "Exosuit frame",
       "Servo assistance",
@@ -226,7 +226,7 @@ for (let lane = 0; lane < 4; lane++)
       id: `global-${lane}-${tier}`,
       name: [
         ["Better notebooks", "Peer review", "Open science"],
-        ["Sample archive", "Automated analysis", "Research network"],
+        ["Sample archive", "Field logistics", "Research network"],
         ["Team coaching", "Shared techniques", "Collective intelligence"],
         ["Precision tools", "Rapid prototyping", "Unified engineering"],
       ][lane][tier],
@@ -265,50 +265,24 @@ for (const n of NODES) {
     n.requires = [];
     n.anyOf = [id(n.lane, n.tier - 1), id((n.lane + 3) % 4, n.tier - 1)];
   }
-  n.kind =
-    n.lane === 3 ||
-    (n.lane === 1 && n.tier === 4) ||
-    (n.lane === 0 && n.tier === 6)
-      ? "module"
-      : "permanent";
-  if (n.kind === "module") {
-    const options: Stat[] = ["speed", "stamina", "xp", "yield"];
-    n.stat = options[(n.tier + n.lane) % 4];
-    n.power = 0.28 + n.tier * 0.065;
-    n.penalty = n.stat === "speed" ? "stamina" : "speed";
-    n.penaltyPower = 0.1;
-    n.description =
-      "Equip for +" +
-      Math.round(n.power * 100) +
-      "% " +
-      {
-        speed: "speed",
-        stamina: "stamina capacity",
-        xp: "experience",
-        yield: "research",
-      }[n.stat] +
-      ", but −10% " +
-      (n.penalty === "speed" ? "speed" : "capacity") +
-      ". One of three build slots. Swap freely.";
-  } else {
-    n.power = (n.lane === 0 ? 0.16 : 0.18) * (1 + n.tier * 0.4);
-    n.description =
-      "Permanently adds " +
-      Math.round(n.power * 100) +
-      "% " +
-      (n.stat === "stamina"
-        ? "stamina capacity"
-        : n.stat === "speed"
-          ? "speed"
-          : "research") +
-      ". " +
-      ([3, 5, 7].includes(n.tier)
-        ? "A hybrid breakthrough: combine both connected disciplines."
-        : n.anyOf?.length
-          ? "Reach this discovery through either connected path."
-          : "Opens new paths in the research web.");
-  }
+  n.kind = "permanent";
+  n.power =
+    (n.lane === 0 ? 0.16 : n.lane === 3 ? 0.12 : 0.18) * (1 + n.tier * 0.4);
+  n.description =
+    "+" +
+    Math.round(n.power * 100) +
+    "% " +
+    {
+      speed: "top speed",
+      stamina: "stamina capacity",
+      yield: "research",
+      xp: "experience",
+    }[n.stat] +
+    " permanently.";
 }
+const logistics = NODES.find((n) => n.id === "global-1-1")!;
+logistics.description =
+  "Unlock 3 field supplies per run. Each restores 27% stamina. +12% research for all programs.";
 export const NODE_MAP = new Map(NODES.map((n) => [n.id, n]));
 export const VARIANTS: Record<
   Program,

@@ -7,7 +7,7 @@ import {
   supply,
   decide,
   research,
-  equip,
+  equipGear,
   selectProgram,
   stats,
   restore,
@@ -73,7 +73,7 @@ describe("distance-based expeditions", () => {
     expect(b.history[0].distance).toBeGreaterThan(a.history[0].distance);
   });
   it("supplies are limited and respect their cooldown", () => {
-    let s = start(fresh());
+    let s = start({ ...fresh(), researched: ["global-1-1"] });
     s.trial!.energy = 30;
     s = supply(s);
     expect(s.trial!.rations).toBe(2);
@@ -84,7 +84,9 @@ describe("distance-based expeditions", () => {
     expect(s.trial!.rations).toBe(1);
   });
   it("route decisions change the run without reflex clicking", () => {
-    let s = advance(start(fresh()), 66);
+    const base = fresh();
+    base.progress.runner.trials = 1;
+    let s = advance(start(base), 66);
     expect(s.trial!.event).toBe(0);
     const shade = decide(s, "a"),
       fast = decide(s, "b");
@@ -96,7 +98,7 @@ describe("distance-based expeditions", () => {
     expect(a.trial!.distance).toBeLessThan(b.trial!.distance);
   });
   it("finishing banks results once, and auto-repeat starts only after rest", () => {
-    let s = advance(start(fresh()), 80);
+    let s = advance(start({ ...fresh(), auto: true }), 80);
     s = finish(s);
     const money = s.science;
     expect(finish(s).science).toBe(money);
@@ -158,18 +160,35 @@ describe("nonlinear research web", () => {
     expect(research(s, "runner-0-0")).toBe(s);
     expect(afford({ ...s, science: 1e8 }, "runner-0-1")).toBe(false);
   });
-  it("modules are choices with tradeoffs and exactly three slots", () => {
+  it("equipment has one piece per slot and cannot be swapped during a run", () => {
     let s = fresh();
-    s.researched = NODES.filter(
-      (n) => n.program === "runner" && n.kind === "module",
-    ).map((n) => n.id);
-    const ids = s.researched;
-    const base = stats(s);
-    for (const id of ids.slice(0, 4)) s = equip(s, id);
-    expect(s.modules).toHaveLength(3);
-    expect(stats(s)).not.toEqual(base);
-    s = equip(s, ids[0]);
-    expect(s.modules).toHaveLength(2);
+    s.inventory = [
+      {
+        id: "a",
+        program: "runner",
+        name: "Shoes",
+        slot: "footwear",
+        rarity: "Common",
+        foundAt: 100,
+        affixes: [{ stat: "speed", value: 0.05 }],
+      },
+      {
+        id: "b",
+        program: "runner",
+        name: "Better shoes",
+        slot: "footwear",
+        rarity: "Rare",
+        foundAt: 1000,
+        affixes: [{ stat: "speed", value: 0.12 }],
+      },
+    ];
+    s = equipGear(s, "a");
+    expect(stats(s).speed).toBeCloseTo(1.05);
+    s = equipGear(s, "b");
+    expect(s.equipped).toEqual(["b"]);
+    expect(stats(s).speed).toBeCloseTo(1.12);
+    const live = start(s);
+    expect(equipGear(live, "a")).toBe(live);
   });
   it("levels improve stamina without needing the tree", () => {
     const s = fresh();
@@ -193,7 +212,7 @@ describe("fresh saves and reset", () => {
     expect(loaded.trial!.speed).toBe(0);
   });
   it("caps offline research without inventing distance", () => {
-    const s = completed();
+    const s = { ...completed(), auto: true };
     s.lastActive = 1000;
     const a = restore(JSON.stringify(s), 1000 + 12 * 3600000);
     const b = restore(JSON.stringify(s), 1000 + 2 * 3600000);
