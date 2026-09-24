@@ -1,5 +1,5 @@
-import { lazy, Suspense, useState } from "react";
-import { PROGRAMS, VARIANTS } from "./research";
+import { lazy, Suspense, useRef, useState } from "react";
+import { PROGRAMS, VARIANTS, STAT_LABELS, type Stat } from "./research";
 import {
   biomeAt,
   BIOMES,
@@ -14,9 +14,10 @@ import {
   EVENTS,
   totalTrials,
   suppliesUnlocked,
+  pendingRewards,
   type Save,
 } from "./game";
-import { STAT_NAMES } from "./equipment";
+import Glyph from "./ResearchGlyph";
 const World = lazy(() => import("./World"));
 export default function Expedition({
   game,
@@ -29,73 +30,142 @@ export default function Expedition({
   onResearch: () => void;
   onEquipment: () => void;
 }) {
-  const [closeup, setCloseup] = useState(false);
+  const [closeup, setCloseup] = useState(false),
+    telemetry = useRef<HTMLDialogElement>(null);
   const t = game.trial,
     p = game.program,
     def = PROGRAMS[p],
     st = stats(game),
-    progress = game.progress[p];
+    progress = game.progress[p],
+    reward = pendingRewards(game);
   const capacity = 100 * st.stamina,
     energy = t?.energy ?? capacity,
-    fatigue = t?.fatigue ?? 0;
-  const biome = biomeAt(t?.distance ?? 0),
-    nextBiome = BIOMES[BIOMES.indexOf(biome) + 1];
-  const experienced = totalTrials(game) > 0;
-  const event = t?.event == null ? null : EVENTS[t.event % 3];
-  const drop = game.inventory.find((g) => g.id === game.lastDrop);
+    fatigue = t?.fatigue ?? 0,
+    bio = biomeAt(t?.distance ?? 0),
+    next = BIOMES[BIOMES.indexOf(bio) + 1];
+  const experienced = totalTrials(game) > 0,
+    event = t?.event == null ? null : EVENTS[t.event % 3],
+    drop = game.inventory.find((g) => g.id === game.lastDrop);
   const variants = VARIANTS[p].filter(
     (v) => !v.node || game.researched.includes(v.node),
   );
-  function toggleRun() {
+  const toggle = () => {
     if (t) {
       setGame((s) => finish({ ...s, auto: false }));
       onResearch();
     } else setGame((s) => start(s));
-  }
+  };
   return (
-    <div className="field-screen">
-      <div className="run-bar">
+    <div className="mission-screen">
+      <div className="mission-heading">
         <div>
           <span className="eyebrow">
-            {def.short} · Level {level(progress.xp)}
+            PROJECT LOST TUESDAY / {def.short} · LV {level(progress.xp)}
           </span>
           <h1>
             {t
-              ? biome.name
+              ? bio.name
               : experienced
-                ? "Ready for another run?"
-                : "How far can you go?"}
+                ? "Another step toward Tuesday."
+                : "First, we run."}
           </h1>
         </div>
-        <button className="primary run-button" onClick={toggleRun}>
-          {t ? "Finish run → Research" : "Start run →"}
-        </button>
+        {experienced && (
+          <span className="personal-best">
+            Best <b>{distance(progress.bestDistance)}</b>
+          </span>
+        )}
       </div>
-      <section className="expedition-stage">
-        <Suspense
-          fallback={<div className="world-message">Preparing the route…</div>}
-        >
-          <World
-            game={game}
-            closeup={closeup}
-            onView={() => setCloseup((v) => !v)}
-          />
-        </Suspense>
-        <div className="journey-readout">
-          <span className="tag">{biome.short}</span>
-          <strong>{distance(t?.distance ?? 0)}</strong>
-          <span>{(t?.speed ?? 0).toFixed(1)} m/s</span>
-        </div>
-        <div className="expedition-clock">
-          <span>Run time</span>
-          <strong>{clock(t?.time ?? 0)}</strong>
-        </div>
-        <div className="journey-hud">
-          <div className="stamina-hud">
+      <div className="mission-layout">
+        <section className="mission-stage">
+          <Suspense
+            fallback={<div className="world-message">Preparing the route…</div>}
+          >
+            <World
+              game={game}
+              closeup={closeup}
+              onView={() => setCloseup((v) => !v)}
+            />
+          </Suspense>
+          <div className="mission-distance">
+            <span>{bio.short}</span>
+            <strong>{distance(t?.distance ?? 0)}</strong>
+            <small>
+              {(t?.speed ?? 0).toFixed(1)} m/s <i>·</i> {clock(t?.time ?? 0)}
+            </small>
+          </div>
+          {next && (
+            <div className="next-biome">
+              <Glyph name="route" />
+              <span>
+                Next: {next.short}
+                <b>
+                  {distance(Math.max(0, bio.end - (t?.distance ?? 0)))} away
+                </b>
+              </span>
+            </div>
+          )}
+          {drop && (
+            <button
+              className={"field-find " + drop.rarity.toLowerCase()}
+              onClick={onEquipment}
+            >
+              <Glyph name="pack" />
+              <span>
+                {drop.rarity} find<b>{drop.name} →</b>
+              </span>
+            </button>
+          )}
+          {event && (
+            <div className="mission-decision">
+              <div>
+                <span className="eyebrow">FIELD DECISION</span>
+                <h2>{event.title}</h2>
+              </div>
+              {(["a", "b"] as const).map((c) => (
+                <button key={c} onClick={() => setGame((s) => decide(s, c))}>
+                  <b>{event[c]}</b>
+                  <small>{c === "a" ? event.ad : event.bd}</small>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+        <aside className="mission-console">
+          <div className="finish-console">
+            <span className="eyebrow">
+              {t ? "READY TO BANK" : "YOUR NEXT EXPERIMENT"}
+            </span>
+            {t ? (
+              <div className="pending-rp">
+                <strong>+{reward.science}</strong>
+                <span>RP</span>
+              </div>
+            ) : (
+              <div className="ready-mark">
+                <Glyph name="arrow" />
+                <b>
+                  Make a little
+                  <br />
+                  scientific progress.
+                </b>
+              </div>
+            )}
+            <button className="primary" onClick={toggle}>
+              {t ? "Finish run · +" + reward.science + " RP →" : "Start run →"}
+            </button>
+            <small>
+              {t
+                ? "Additional to RP already banked."
+                : "A long road. A questionable hypothesis."}
+            </small>
+          </div>
+          <div className="console-stamina">
             <div>
               <span>{def.unit}</span>
               <b>
-                {Math.round(energy)} / {Math.round(capacity)}
+                {Math.round(energy)}
+                <small> / {Math.round(capacity)}</small>
               </b>
             </div>
             <div className="stamina-track">
@@ -108,153 +178,138 @@ export default function Expedition({
                 }}
               />
             </div>
-            {fatigue > 5 && (
-              <small>{Math.round(fatigue)} capacity lost to fatigue</small>
-            )}
+            <small>
+              {fatigue > 1
+                ? Math.round(fatigue) + " capacity lost to fatigue"
+                : "Ready for the road"}
+              {(t?.secondWind ?? 0) > 0 ? " · SECOND WIND" : ""}
+            </small>
           </div>
-          {nextBiome && (
-            <div className="journey-next">
-              <small>Next: {nextBiome.short}</small>
-              <b>
-                {distance(Math.max(0, biome.end - (t?.distance ?? 0)))} away
-              </b>
+          {experienced && (
+            <div className="console-pace">
+              <span className="eyebrow">PACE</span>
+              <div className="pace-options" role="group" aria-label="Pace">
+                {(
+                  [
+                    ["recover", "Recover", "Regain energy"],
+                    ["steady", "Steady", "Go further"],
+                    ["push", "Push", "Use more energy"],
+                  ] as const
+                ).map(([id, label, desc]) => (
+                  <button
+                    key={id}
+                    className={game.pace === id ? "selected" : ""}
+                    aria-pressed={game.pace === id}
+                    onClick={() => setGame((s) => ({ ...s, pace: id }))}
+                  >
+                    <b>{label}</b>
+                    <small>{desc}</small>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
-        </div>
-        {!experienced && !t && (
-          <div className="first-run-note">
-            One scientist. A long road.
-            <br />
-            Start running. Discover the rest along the way.
-          </div>
-        )}
-      </section>
-      {experienced && (
-        <div className="field-controls">
-          <div className="pace-options" role="group" aria-label="Pace">
-            {(
-              [
-                ["recover", "Recover", "Slow down, regain stamina"],
-                ["steady", "Steady", "Balanced pace"],
-                ["push", "Push", "Faster, uses more stamina"],
-              ] as const
-            ).map(([id, label, desc]) => (
+          <div className="console-options">
+            {suppliesUnlocked(game) && (
               <button
-                key={id}
-                className={game.pace === id ? "selected" : ""}
-                aria-pressed={game.pace === id}
-                onClick={() => setGame((s) => ({ ...s, pace: id }))}
+                className="secondary supply-button"
+                disabled={!t || !t.rations || t.supplyCooldown > 0}
+                onClick={() => setGame((s) => supply(s))}
               >
-                <b>{label}</b>
-                <small>{desc}</small>
+                {t && t.supplyCooldown > 0
+                  ? "Supply ready in " + Math.ceil(t.supplyCooldown) + "s"
+                  : "Use supply · " + (t?.rations ?? 3) + " left"}
               </button>
-            ))}
+            )}
+            {totalTrials(game) >= 4 && (
+              <label className="auto">
+                <input
+                  type="checkbox"
+                  checked={game.auto}
+                  onChange={(e) =>
+                    setGame((s) => ({
+                      ...s,
+                      auto: e.target.checked,
+                      rest: e.target.checked ? s.rest : 0,
+                    }))
+                  }
+                />{" "}
+                Repeat after exhaustion
+              </label>
+            )}
           </div>
-          {suppliesUnlocked(game) && (
-            <button
-              className="secondary"
-              disabled={!t || !t.rations || t.supplyCooldown > 0}
-              onClick={() => setGame((s) => supply(s))}
-            >
-              {t && t.supplyCooldown > 0
-                ? "Ready in " + Math.ceil(t.supplyCooldown) + "s"
-                : "Use supply · " + (t?.rations ?? 3) + " left"}
-            </button>
-          )}
-          {totalTrials(game) >= 3 && (
-            <label className="auto">
-              <input
-                type="checkbox"
-                checked={game.auto}
-                onChange={(e) =>
-                  setGame((s) => ({
-                    ...s,
-                    auto: e.target.checked,
-                    rest: e.target.checked ? s.rest : 0,
-                  }))
-                }
-              />{" "}
-              Auto-repeat
-            </label>
-          )}
           {variants.length > 1 && (
-            <label className="variant-label">
-              Test vehicle
-              <select
-                aria-label="Test vehicle"
-                value={progress.variant}
-                disabled={!!t}
-                onChange={(e) =>
-                  setGame((s) => ({
-                    ...s,
-                    progress: {
-                      ...s.progress,
-                      [p]: { ...s.progress[p], variant: e.target.value },
-                    },
-                  }))
-                }
-              >
-                {variants.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="vehicle-buttons">
+              <span className="eyebrow">TEST VEHICLE</span>
+              {variants.map((v) => (
+                <button
+                  key={v.id}
+                  disabled={!!t}
+                  className={v.id === progress.variant ? "selected" : ""}
+                  onClick={() =>
+                    setGame((s) => ({
+                      ...s,
+                      progress: {
+                        ...s.progress,
+                        [p]: { ...s.progress[p], variant: v.id },
+                      },
+                    }))
+                  }
+                >
+                  {v.name}
+                </button>
+              ))}
+            </div>
           )}
-        </div>
-      )}
-      {event && (
-        <section className="decision-card">
-          <div>
-            <span className="eyebrow">Along the way</span>
-            <h2>{event.title}</h2>
-            <p>{event.text}</p>
+          <div className="console-bottom">
+            {experienced ? (
+              <>
+                <span>
+                  {Math.floor(progress.funds)} <b>{def.currency}</b>
+                </span>
+                <button
+                  className="text-button"
+                  onClick={() => telemetry.current?.showModal()}
+                >
+                  Telemetry ↗
+                </button>
+              </>
+            ) : (
+              <p>
+                The lab's clocks are frozen.
+                <br />
+                Your legs are the research budget.
+              </p>
+            )}
           </div>
-          <div className="decision-options">
-            {(["a", "b"] as const).map((choice) => (
-              <button
-                key={choice}
-                className="secondary"
-                onClick={() => setGame((s) => decide(s, choice))}
-              >
-                <b>{event[choice]}</b>
-                <small>{choice === "a" ? event.ad : event.bd}</small>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-      {drop && (
-        <section className="drop-banner" aria-live="polite">
-          <span className={"rarity " + drop.rarity.toLowerCase()}>
-            {drop.rarity} find
-          </span>
-          <b>{drop.name}</b>
-          <span>
-            {drop.affixes
-              .map(
-                (a) =>
-                  "+" + Math.round(a.value * 100) + "% " + STAT_NAMES[a.stat],
-              )
-              .join(" · ")}
-          </span>
-          <button className="text-button" onClick={onEquipment}>
-            View equipment →
+        </aside>
+      </div>
+      <dialog ref={telemetry} className="telemetry-dialog">
+        <div className="section-title">
+          <h2>Live telemetry</h2>
+          <button
+            className="secondary"
+            onClick={() => telemetry.current?.close()}
+          >
+            Close
           </button>
-        </section>
-      )}
-      {experienced && (
-        <div className="field-summary">
-          <span>
-            Personal best <b>{distance(progress.bestDistance)}</b>
-          </span>
-          <span>{progress.trials} runs completed</span>
-          <span>
-            {Math.floor(progress.funds)} {def.currency}
-          </span>
         </div>
-      )}
+        <div className="telemetry-grid">
+          {(Object.keys(st) as Stat[]).map((k) => (
+            <div key={k}>
+              <span>{STAT_LABELS[k]}</span>
+              <b>
+                {k === "wind"
+                  ? ((st[k] - 1) * 2).toFixed(1) + " m/s"
+                  : k === "stamina"
+                    ? Math.round(capacity)
+                    : st[k].toFixed(2) + "×"}
+              </b>
+            </div>
+          ))}
+        </div>
+        <p>Research and equipped items contribute to these totals.</p>
+      </dialog>
     </div>
   );
 }

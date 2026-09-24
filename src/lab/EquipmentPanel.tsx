@@ -7,7 +7,7 @@ import {
   type Gear,
 } from "./equipment";
 import { equipGear, salvageGear, distance, type Save } from "./game";
-import { PROGRAMS } from "./research";
+import { PROGRAMS, type Stat } from "./research";
 export default function Equipment({
   game,
   setGame,
@@ -130,26 +130,23 @@ export default function Equipment({
               {old && !equipped && (
                 <div className="gear-comparison">
                   <span>Compared with {old.name}</span>
-                  {(["speed", "stamina", "yield", "xp"] as const).map(
-                    (stat) => {
-                      const delta = Math.round(
-                        100 *
-                          ((g.affixes.find((a) => a.stat === stat)?.value ??
-                            0) -
-                            (old.affixes.find((a) => a.stat === stat)?.value ??
-                              0)),
-                      );
-                      return delta ? (
-                        <small
-                          className={delta > 0 ? "enough" : "short"}
-                          key={stat}
-                        >
-                          {delta > 0 ? "+" : ""}
-                          {delta}% {STAT_NAMES[stat]}
-                        </small>
-                      ) : null;
-                    },
-                  )}
+                  {(Object.keys(STAT_NAMES) as Stat[]).map((stat) => {
+                    const delta = Math.round(
+                      100 *
+                        ((g.affixes.find((a) => a.stat === stat)?.value ?? 0) -
+                          (old.affixes.find((a) => a.stat === stat)?.value ??
+                            0)),
+                    );
+                    return delta ? (
+                      <small
+                        className={delta > 0 ? "enough" : "short"}
+                        key={stat}
+                      >
+                        {delta > 0 ? "+" : ""}
+                        {delta}% {STAT_NAMES[stat]}
+                      </small>
+                    ) : null;
+                  })}
                 </div>
               )}
               <button

@@ -4,7 +4,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { biomeAt, type Save } from "./game";
+import { biomeBlend, BIOMES, type Save } from "./game";
 import { VARIANTS } from "./research";
 export default function World({
   game,
@@ -113,12 +113,12 @@ export default function World({
       vehicle: THREE.Object3D | undefined,
       projectile: THREE.Object3D | undefined,
       active = "",
-      biome = "",
       lastView = false;
     const parts = new Map<string, THREE.Object3D>();
     const assets = new Map<string, THREE.Group>();
     const foliage: {
       mesh: THREE.InstancedMesh;
+      region: number;
       positions: { x: number; z: number; scale: number; rotation: number }[];
     }[] = [];
     const materials = new Set<THREE.Material>(),
@@ -173,6 +173,7 @@ export default function World({
       assets.set(name, result);
       return result;
     }
+    let sceneryBiome = 0;
     function scenery(name: string, count: number, offset: number, scale = 1) {
       const src = bake(name);
       const positions = Array.from({ length: count }, (_, i) => ({
@@ -187,15 +188,12 @@ export default function World({
         mesh.receiveShadow = true;
         mesh.castShadow = false;
         scene.add(mesh);
-        foliage.push({ mesh, positions });
+        foliage.push({ mesh, positions, region: sceneryBiome });
       }
     }
-    function setBiome(name: string) {
-      for (const item of foliage) {
-        scene.remove(item.mesh);
-        item.mesh.dispose();
-      }
-      foliage.length = 0;
+    function buildBiome(index: number) {
+      sceneryBiome = index;
+      const name = BIOMES[index].name;
       if (name === "City limits") {
         scenery("CityBlock", 18, 0);
         scenery("TrailLamp", 20, 3);
@@ -214,7 +212,6 @@ export default function World({
         scenery("SnowPeak", 20, 0, 1.5);
         scenery("Pine", 24, 5, 0.8);
       }
-      biome = name;
     }
     new GLTFLoader().load(
       import.meta.env.BASE_URL + "models/move-lab.glb",
@@ -227,6 +224,7 @@ export default function World({
         }
         library = gltf.scene;
         collect(library);
+        BIOMES.forEach((_, i) => buildBiome(i));
         setLoading(false);
       },
       undefined,
@@ -286,24 +284,42 @@ export default function World({
           (t.distance - renderDistance) * (1 - Math.exp(-dt * 3));
       renderTime += dt;
       if (t) renderTime += (t.time - renderTime) * dt * 3;
-      const environment = biomeAt(t?.distance ?? 0);
-      scene.background = (scene.background as THREE.Color).lerp(
-        new THREE.Color(environment.sky),
-        dt * 1.5,
+      const blend = biomeBlend(t?.distance ?? 0);
+      const from = BIOMES[blend.from],
+        to = BIOMES[blend.to];
+      const sky = new THREE.Color(from.sky).lerp(
+        new THREE.Color(to.sky),
+        blend.mix,
       );
+      (scene.background as THREE.Color).lerp(sky, 1 - Math.exp(-dt * 1.4));
       (scene.fog as THREE.Fog).color.copy(scene.background as THREE.Color);
-      groundMat.color.lerp(new THREE.Color(environment.color), dt * 1.5);
-      roadMat.color.lerp(
-        new THREE.Color(
-          environment.short === "Forest"
-            ? "#86765a"
-            : environment.short === "Desert"
-              ? "#736b63"
-              : "#647273",
-        ),
-        dt,
+      groundMat.color.lerp(
+        new THREE.Color(from.color).lerp(new THREE.Color(to.color), blend.mix),
+        1 - Math.exp(-dt * 1.4),
       );
-      if (library && environment.name !== biome) setBiome(environment.name);
+      const roadColor = (b: typeof from) =>
+        b.short === "Forest"
+          ? "#86765a"
+          : b.short === "Desert"
+            ? "#736b63"
+            : "#647273";
+      roadMat.color.lerp(
+        new THREE.Color(roadColor(from)).lerp(
+          new THREE.Color(roadColor(to)),
+          blend.mix,
+        ),
+        1 - Math.exp(-dt * 1.4),
+      );
+      const forest =
+        (blend.from === 1 ? 1 - blend.mix : 0) +
+        (blend.to === 1 ? blend.mix : 0);
+      const markMaterial = marks.material as THREE.MeshStandardMaterial;
+      markMaterial.transparent = true;
+      markMaterial.opacity = THREE.MathUtils.lerp(
+        markMaterial.opacity,
+        1 - forest,
+        1 - Math.exp(-dt * 1.4),
+      );
       for (let i = 0; i < 30; i++) {
         matrix.makeTranslation(
           ((i * 6 - renderDistance * 0.65 + 9000) % 180) - 90,
@@ -313,13 +329,34 @@ export default function World({
         marks.setMatrixAt(i, matrix);
       }
       marks.instanceMatrix.needsUpdate = true;
-      marks.visible = environment.short !== "Forest";
+      marks.visible = markMaterial.opacity > 0.01;
       const visualDistance = renderDistance * 0.65;
       for (const item of foliage) {
+        // Roadside objects belong to their physical stretch of the route.
+        // Blend density over the boundary; opaque buildings never become ghosts.
+        const region = BIOMES[item.region],
+          margin = 620;
+        item.mesh.visible =
+          renderDistance >= region.start - margin &&
+          renderDistance <= region.end + margin;
+        if (!item.mesh.visible) continue;
         for (let i = 0; i < item.positions.length; i++) {
           const a = item.positions[i];
           pos.set(((a.x - visualDistance + 12000000) % 120) - 60, 0, a.z);
-          size.setScalar(a.scale);
+          const ahead = biomeBlend(Math.max(0, renderDistance + pos.x / 0.65));
+          const weight =
+            ahead.from === ahead.to
+              ? item.region === ahead.from
+                ? 1
+                : 0
+              : item.region === ahead.from
+                ? 1 - ahead.mix
+                : item.region === ahead.to
+                  ? ahead.mix
+                  : 0;
+          const noise =
+            Math.sin((i + 1) * 12.9898 + item.region * 78.233) * 43758.5453;
+          size.setScalar(weight > noise - Math.floor(noise) ? a.scale : 0);
           rotation.setFromAxisAngle(axis, a.rotation);
           matrix.compose(pos, rotation, size);
           item.mesh.setMatrixAt(i, matrix);

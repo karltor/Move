@@ -35,6 +35,8 @@ export interface Trial {
   rng: number;
   nextDrop: number;
   drops: string[];
+  secondWind: number;
+  usedSecondWind: boolean;
 }
 export interface Result {
   id: number;
@@ -66,6 +68,8 @@ export interface Save {
   lastActive: number;
   offline: number;
   notice: string;
+  storySeen: string[];
+  tipsEnabled: boolean;
 }
 export const SAVE_KEY = "move.expedition.v2";
 export const BIOMES = [
@@ -132,6 +136,18 @@ export const BIOMES = [
 ];
 export const biomeAt = (d: number) =>
   BIOMES.find((b) => d >= b.start && d < b.end) ?? BIOMES[BIOMES.length - 1];
+export function biomeBlend(distance: number) {
+  for (let i = 1; i < BIOMES.length; i++) {
+    const boundary = BIOMES[i].start,
+      width = Math.min(500, Math.max(30, boundary * 0.04));
+    if (distance >= boundary - width && distance <= boundary + width) {
+      const u = (distance - boundary + width) / (width * 2);
+      return { from: i - 1, to: i, mix: u * u * (3 - 2 * u) };
+    }
+  }
+  const index = BIOMES.indexOf(biomeAt(distance));
+  return { from: index, to: index, mix: 0 };
+}
 export const distance = (d: number) =>
   d >= 1000
     ? (d / 1000).toLocaleString("en", {
@@ -152,6 +168,8 @@ export function fresh(): Save {
   });
   return {
     version: 2,
+    storySeen: [],
+    tipsEnabled: true,
     science: 35,
     program: "runner",
     unlocked: ["runner"],
@@ -181,12 +199,23 @@ export const level = (xp: number) =>
   Math.floor(Math.sqrt(Math.max(0, xp) / 35)) + 1;
 export const levelStart = (l: number) => 35 * (l - 1) * (l - 1);
 export function stats(s: Save, p = s.program) {
-  const out: Record<Stat, number> = { speed: 1, stamina: 1, yield: 1, xp: 1 };
+  const out: Record<Stat, number> = {
+    speed: 1,
+    stamina: 1,
+    yield: 1,
+    xp: 1,
+    acceleration: 1,
+    economy: 1,
+    recovery: 1,
+    resilience: 1,
+    wind: 1,
+    luck: 1,
+  };
   for (const id of s.researched) {
     const n = NODE_MAP.get(id);
     if (n && (n.program === p || n.program === "global")) {
-      out[n.stat] += n.power;
-      if (n.penalty) out[n.penalty] -= n.penaltyPower ?? 0;
+      for (const [stat, value] of Object.entries(n.effects))
+        out[stat as Stat] += value;
     }
   }
   for (const item of s.inventory) {
@@ -239,12 +268,7 @@ export function research(s: Save, id: string): Save {
               funds: s.progress[n.program].funds - n.localCost,
             },
           },
-    notice:
-      n.name +
-      " discovered. " +
-      (n.kind === "module"
-        ? "Choose whether to equip it."
-        : "Permanent research installed."),
+    notice: n.name + " discovered. Permanent research installed.",
   };
 }
 export function equipGear(s: Save, id: string): Save {
@@ -273,10 +297,36 @@ export function salvageGear(s: Save, id: string): Save {
 }
 export const suppliesUnlocked = (s: Save) =>
   s.researched.includes("global-1-1");
+export const hasAbility = (s: Save, ability: string) =>
+  s.researched.some((id) => {
+    const n = NODE_MAP.get(id);
+    return (
+      n?.ability === ability &&
+      (n.program === s.program || n.program === "global")
+    );
+  });
+export function programDiscovered(s: Save, p: Program) {
+  if (s.unlocked.includes(p)) return true;
+  if (p === "projectile")
+    return (
+      totalTrials(s) >= 3 &&
+      totalDistance(s) >= PROGRAMS[p].distance &&
+      s.progress.runner.bestDistance >= 1000 &&
+      s.researched.filter((id) => id.startsWith("runner-")).length >= 4
+    );
+  if (p === "wheels")
+    return (
+      s.unlocked.includes("projectile") &&
+      totalTrials(s) >= 6 &&
+      totalDistance(s) >= 6000
+    );
+  return true;
+}
 export function selectProgram(s: Save, p: Program): Save {
   if (s.program === p || s.trial) return s;
   if (!s.unlocked.includes(p)) {
     if (
+      !programDiscovered(s, p) ||
       s.science < PROGRAMS[p].unlock ||
       totalDistance(s) < PROGRAMS[p].distance
     )
@@ -308,7 +358,9 @@ export function start(
         trial: {
           time: 0,
           distance: 0,
-          speed: 0,
+          speed: hasAbility(s, "rolling-start")
+            ? PROGRAMS[s.program].base * stats(s).speed * 0.5
+            : 0,
           energy: 100 * stats(s).stamina,
           fatigue: 0,
           peak: 0,
@@ -324,6 +376,8 @@ export function start(
           rng: seed >>> 0,
           nextDrop: 40 + ((seed >>> 0) % 26),
           drops: [],
+          secondWind: 0,
+          usedSecondWind: false,
         },
         notice:
           "Expedition underway. Pace, supplies and route decisions determine your reach.",
@@ -344,8 +398,11 @@ export function supply(s: Save): Save {
     trial: {
       ...t,
       rations: t.rations - 1,
-      energy: Math.min(capacity - t.fatigue, t.energy + capacity * 0.27),
-      supplyCooldown: 45,
+      energy: Math.min(
+        capacity - t.fatigue,
+        t.energy + capacity * (hasAbility(s, "hydration") ? 0.37 : 0.27),
+      ),
+      supplyCooldown: hasAbility(s, "hydration") ? 30 : 45,
     },
     notice:
       s.program === "runner"
@@ -416,16 +473,27 @@ export function decide(s: Save, choice: "a" | "b"): Save {
     notice: EVENTS[event][choice] + ". The expedition continues.",
   };
 }
+export function pendingRewards(s: Save) {
+  const t = s.trial,
+    st = stats(s);
+  if (!t) return { science: 0, funds: 0, xp: 0 };
+  const survey = hasAbility(s, "survey")
+    ? BIOMES.filter((b) => b.start > 0 && b.start <= t.distance).length * 20
+    : 0;
+  return {
+    science: Math.floor(
+      (Math.sqrt(t.distance) * 3 + t.time * 0.12 + t.samples + survey) *
+        st.yield,
+    ),
+    funds: Math.floor(Math.sqrt(t.distance) * 1.3 + t.time * 0.08),
+    xp: Math.floor((Math.sqrt(t.distance) + t.time * 0.04) * st.xp),
+  };
+}
 export function finish(s: Save): Save {
   const t = s.trial;
   if (!t) return s;
-  const st = stats(s);
   const p = s.progress[s.program];
-  const science = Math.floor(
-    (Math.sqrt(t.distance) * 3 + t.time * 0.12 + t.samples) * st.yield,
-  );
-  const funds = Math.floor(Math.sqrt(t.distance) * 1.3 + t.time * 0.08);
-  const xp = Math.floor((Math.sqrt(t.distance) + t.time * 0.04) * st.xp);
+  const { science, funds, xp } = pendingRewards(s);
   const result: Result = {
     id: totalTrials(s) + 1,
     program: s.program,
@@ -479,7 +547,25 @@ export function step(s: Save, dt: number): Save {
   }
   const t = { ...s.trial };
   const st = stats(s);
+  const blend = biomeBlend(t.distance);
   const bio = biomeAt(t.distance);
+  let terrainDrain =
+    BIOMES[blend.from].drain * (1 - blend.mix) +
+    BIOMES[blend.to].drain * blend.mix;
+  if (
+    (bio.short === "Desert" && hasAbility(s, "heat")) ||
+    (bio.short === "Alpine" && hasAbility(s, "altitude"))
+  )
+    terrainDrain = 1 + (terrainDrain - 1) * 0.5;
+  if (
+    hasAbility(s, "second-wind") &&
+    !t.usedSecondWind &&
+    t.energy < 25 * st.stamina
+  ) {
+    t.usedSecondWind = true;
+    t.secondWind = 12;
+  }
+  t.secondWind = Math.max(0, (t.secondWind ?? 0) - dt);
   t.time += dt;
   t.supplyCooldown = Math.max(0, t.supplyCooldown - dt);
   if (t.event !== null && t.time >= t.nextEvent + 35) {
@@ -492,32 +578,46 @@ export function step(s: Save, dt: number): Save {
   t.restTime = Math.max(0, t.restTime - dt);
   const maxEnergy = 100 * st.stamina - t.fatigue;
   t.fatigue +=
-    dt * (resting ? 0.025 : s.pace === "push" ? 0.16 : 0.075) * bio.drain;
-  const routeDrain = t.route === "shade" ? 0.8 : t.route === "fast" ? 1.25 : 1;
+    (dt * (resting ? 0.025 : s.pace === "push" ? 0.16 : 0.075) * terrainDrain) /
+    st.resilience;
+  const routeDrain =
+    t.route === "shade"
+      ? 0.8
+      : t.route === "fast" && !hasAbility(s, "shortcut")
+        ? 1.25
+        : 1;
   const drain =
-    (resting
-      ? -0.6
+    ((resting
+      ? -0.6 * st.recovery
       : s.pace === "recover"
-        ? -0.3
+        ? -0.3 * st.recovery
         : s.pace === "push"
           ? 0.8
           : 0.31) *
-    bio.drain *
-    routeDrain;
-  t.energy = Math.max(0, Math.min(maxEnergy, t.energy - drain * dt));
+      terrainDrain *
+      routeDrain) /
+    (s.pace === "recover" || resting ? 1 : st.economy);
+  t.energy = Math.max(
+    0,
+    Math.min(
+      maxEnergy,
+      t.energy -
+        drain * dt +
+        (t.secondWind > 0 && s.pace === "steady" ? 0.8 * dt * st.recovery : 0),
+    ),
+  );
   const vehicle = VARIANTS[s.program].find(
     (v) => v.id === s.progress[s.program].variant,
   );
   const multiplier = vehicle?.multiplier ?? 1;
   const goal = resting
     ? 0
-    : PROGRAMS[s.program].base *
-      st.speed *
-      multiplier *
+    : (PROGRAMS[s.program].base * st.speed * multiplier + (st.wind - 1) * 2) *
+      (hasAbility(s, "negative-split") && t.distance >= 1000 ? 1.15 : 1) *
       (s.pace === "push" ? 1.55 : s.pace === "recover" ? 0.45 : 1) *
       (t.route === "shade" ? 0.9 : t.route === "fast" ? 1.15 : 1) *
       (t.energy < 20 ? 0.55 + (0.45 * t.energy) / 20 : 1);
-  t.speed += (goal - t.speed) * (1 - Math.exp(-dt * 1.6));
+  t.speed += (goal - t.speed) * (1 - Math.exp(-dt * 1.6 * st.acceleration));
   t.distance += t.speed * dt;
   t.peak = Math.max(t.peak, t.speed);
   let science = s.science;
@@ -548,9 +648,9 @@ export function step(s: Save, dt: number): Save {
   if (t.time >= t.nextDrop) {
     const [roll, seed] = random(t.rng);
     t.rng = seed;
-    t.nextDrop = t.time + 45 + Math.floor(roll * 40);
+    t.nextDrop = t.time + (45 + Math.floor(roll * 40)) / Math.sqrt(st.luck);
     if (roll < 0.8 || s.inventory.length === 0) {
-      const drop = rollGear(s.program, t.distance, t.rng, s.nextGear);
+      const drop = rollGear(s.program, t.distance, t.rng, s.nextGear, st.luck);
       t.rng = drop.seed;
       if (s.inventory.length < 90) {
         t.drops = [...t.drops, drop.gear.id];
@@ -585,6 +685,10 @@ export function restore(raw: string | null, now = Date.now()): Save {
     if (x.version !== 2) return s;
     const keys = Object.keys(PROGRAMS) as Program[];
     s.science = number(x.science, 35);
+    s.storySeen = Array.isArray(x.storySeen)
+      ? x.storySeen.filter((v: unknown) => typeof v === "string")
+      : [];
+    s.tipsEnabled = x.tipsEnabled !== false;
     s.unlocked = keys.filter(
       (k) =>
         k === "runner" || (Array.isArray(x.unlocked) && x.unlocked.includes(k)),
@@ -680,6 +784,8 @@ export function restore(raw: string | null, now = Date.now()): Save {
       s.trial = {
         ...x.trial,
         speed: 0,
+        secondWind: number(x.trial.secondWind),
+        usedSecondWind: x.trial.usedSecondWind === true,
         rations: suppliesUnlocked(s) ? Math.min(3, x.trial.rations) : 0,
         rng: number(x.trial.rng, 123456789) >>> 0,
         nextDrop: number(x.trial.nextDrop, x.trial.time + 50),

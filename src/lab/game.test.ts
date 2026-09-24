@@ -50,7 +50,7 @@ describe("distance-based expeditions", () => {
   it("rewards milestones and experience during a run", () => {
     const s = advance(start(fresh()), 50);
     expect(s.science).toBeGreaterThan(35);
-    expect(s.progress.runner.funds).toBeGreaterThan(15);
+    expect(s.progress.runner.funds).toBeGreaterThan(12);
     expect(s.progress.runner.xp).toBeGreaterThan(0);
     expect(s.progress.projectile.xp).toBe(0);
   });
@@ -112,6 +112,10 @@ describe("distance-based expeditions", () => {
     s.science = 1000;
     expect(selectProgram(s, "projectile")).toBe(s);
     s = completed(s);
+    s.progress.runner.trials = 3;
+    s.progress.runner.bestDistance = 1100;
+    s.progress.runner.distance = 1600;
+    s.researched = ["runner-0-0", "runner-0-1", "runner-0-2", "runner-2-0"];
     const xp = s.progress.runner.xp;
     s = selectProgram(s, "projectile");
     expect(s.program).toBe("projectile");
@@ -135,10 +139,12 @@ describe("nonlinear research web", () => {
     s.progress.runner.funds = 1e8;
     s.researched = ["runner-0-2"];
     expect(available(s, "runner-0-3")).toBe(false);
-    s.researched.push("runner-1-2");
+    s.researched.push("runner-0-1");
     expect(available(s, "runner-0-3")).toBe(true);
-    s.researched = ["runner-3-1"];
-    expect(available(s, "runner-0-2")).toBe(true);
+    s.researched = ["runner-0-4"];
+    expect(available(s, "runner-0-6")).toBe(true);
+    s.researched = ["runner-0-3"];
+    expect(available(s, "runner-0-6")).toBe(true);
   });
   it("all nodes are reachable without cycles or missing references", () => {
     let s = fresh();

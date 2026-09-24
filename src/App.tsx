@@ -1,3 +1,4 @@
+import Story, { nextStory } from "./lab/Story";
 import { useEffect, useRef, useState } from "react";
 import { PROGRAMS, type Program } from "./lab/research";
 import {
@@ -6,7 +7,6 @@ import {
   SAVE_KEY,
   step,
   selectProgram,
-  totalDistance,
   totalTrials,
   type Save,
 } from "./lab/game";
@@ -15,6 +15,7 @@ import Records from "./lab/Records";
 import Expedition from "./lab/Expedition";
 import Equipment from "./lab/EquipmentPanel";
 import "./App.css";
+import "./atlas.css";
 function read() {
   try {
     return restore(localStorage.getItem(SAVE_KEY));
@@ -32,13 +33,16 @@ export default function App() {
     lastRuns = useRef(totalTrials(game)),
     dialog = useRef<HTMLDialogElement>(null);
   live.current = game;
+  const story = nextStory(game, tab);
+  const paused = useRef(false);
+  paused.current = !!story || resetOpen;
   useEffect(() => {
     let last = performance.now();
     const tick = setInterval(() => {
       const now = performance.now(),
         dt = (now - last) / 1000;
       last = now;
-      if (!document.hidden) setGame((s) => step(s, dt));
+      if (!document.hidden && !paused.current) setGame((s) => step(s, dt));
     }, 100);
     const save = () => {
       try {
@@ -80,7 +84,7 @@ export default function App() {
     else dialog.current?.close();
   }, [resetOpen]);
   const experienced = totalTrials(game) > 0;
-  const programMenu = experienced && (totalDistance(game) >= 400 || game.unlocked.length > 1);
+
   function reset() {
     const s = fresh();
     live.current = s;
@@ -107,7 +111,12 @@ export default function App() {
       : []),
   ];
   return (
-    <div className="app">
+    <div
+      className={
+        "app " +
+        (tab === "field" ? "run-app" : tab === "research" ? "atlas-app" : "")
+      }
+    >
       <header className="app-header">
         <button
           className="wordmark"
@@ -130,36 +139,12 @@ export default function App() {
           ))}
         </nav>
         <div className="header-tools">
-          {programMenu && (
-            <select
-              aria-label="Research program"
-              value={game.program}
-              disabled={!!game.trial}
-              onChange={(e) =>
-                setGame((s) => selectProgram(s, e.target.value as Program))
-              }
-            >
-              {(Object.keys(PROGRAMS) as Program[]).map((p) => (
-                <option
-                  key={p}
-                  value={p}
-                  disabled={
-                    !game.unlocked.includes(p) &&
-                    (game.science < PROGRAMS[p].unlock ||
-                      totalDistance(game) < PROGRAMS[p].distance)
-                  }
-                >
-                  {PROGRAMS[p].short}
-                  {!game.unlocked.includes(p)
-                    ? " · Unlock " + PROGRAMS[p].unlock + " RP"
-                    : ""}
-                </option>
-              ))}
-            </select>
-          )}
           {experienced && (
             <span className="wallet">
-              <b>{Math.floor(game.science).toLocaleString("en")}</b> RP
+              <span>RESEARCH</span>
+              <b>
+                {Math.floor(game.science).toLocaleString("en")} <em>RP</em>
+              </b>
             </span>
           )}
           <button
@@ -173,6 +158,20 @@ export default function App() {
           </button>
         </div>
       </header>
+      {game.unlocked.length > 1 && (
+        <div className="program-strip" aria-label="Research programs">
+          {game.unlocked.map((p: Program) => (
+            <button
+              key={p}
+              className={p === game.program ? "active" : ""}
+              disabled={!!game.trial && p !== game.program}
+              onClick={() => setGame((s) => selectProgram(s, p))}
+            >
+              {PROGRAMS[p].short}
+            </button>
+          ))}
+        </div>
+      )}
       <main>
         {tab === "field" && (
           <Expedition
@@ -201,13 +200,23 @@ export default function App() {
           />
         )}
         {tab === "settings" && (
-          <Records
-            game={game}
-            setGame={setGame}
-            guide
-            onField={() => setTab("field")}
-            onReset={() => setResetOpen(true)}
-          />
+          <>
+            <button
+              className="secondary replay-story"
+              onClick={() =>
+                setGame((s) => ({ ...s, tipsEnabled: true, storySeen: [] }))
+              }
+            >
+              Replay SANIK story & tips
+            </button>
+            <Records
+              game={game}
+              setGame={setGame}
+              guide
+              onField={() => setTab("field")}
+              onReset={() => setResetOpen(true)}
+            />
+          </>
         )}
         {saveError && (
           <p className="inline-note" role="alert">
@@ -215,6 +224,22 @@ export default function App() {
           </p>
         )}
       </main>
+      {story && (
+        <Story
+          key={story}
+          id={story}
+          onDone={() =>
+            setGame((s) => ({ ...s, storySeen: [...s.storySeen, story] }))
+          }
+          onSkip={() =>
+            setGame((s) => ({
+              ...s,
+              tipsEnabled: false,
+              storySeen: [...s.storySeen, story],
+            }))
+          }
+        />
+      )}
       <dialog
         ref={dialog}
         className="reset-dialog"

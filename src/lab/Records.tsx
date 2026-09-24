@@ -119,7 +119,7 @@ export default function Records({
             [
               "04",
               "Build something unreasonable",
-              "Unlock projectiles after 400 m and 120 RP, wheels after 1.2 km and 350 RP. Research new vehicles, then choose your test vehicle between runs. Rare equipment finds become more likely the further you travel.",
+              "Projectile research appears after three runs, a 1 km personal best, four runner discoveries and 1.5 km total travel. Open it for 220 RP. Wheels follow after six runs, the projectile program and 6 km total travel, for 600 RP. Choose unlocked vehicles between runs. Rare finds become more likely further along the road.",
             ],
           ].map(([num, title, desc]) => (
             <article key={num}>

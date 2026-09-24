@@ -1,19 +1,21 @@
 # MOVE — Experimental Motion Laboratory
 
-A browser incremental game about a research team trying to make things move faster and travel further.
+A browser incremental game about a research team trying to make things move faster and travel further. The inertia engine has misplaced Tuesday. A mysterious visitor named SANIK needs motion data to bring it back. Contextual first-encounter story scenes pause the simulation and can be skipped or replayed in Settings.
 
 ## Play
 
-Start a run with the single visible start button. Research appears after the first completed run, equipment after the first find, and shared science and automation after three runs. A fresh scientist can sustain a run for about five minutes. Stamina, accumulated fatigue, pace, supplies and research determine how far the expedition goes.
+Start a run with the single visible start button. Research appears after the first completed run, equipment after the first find, and shared science and automation after four runs. A fresh scientist can sustain a run for about five minutes. Stamina, accumulated fatigue, pace, supplies and research determine how far the expedition goes.
 
 - **Steady** pace balances distance and energy. **Push** spends stamina for speed. **Recover** restores energy, but accumulated fatigue lowers recoverable capacity.
 - Optional route, sampling and rest decisions unlock after the first run. Field logistics research later unlocks three supplies per run; none are given at the start.
 - Experience arrives during expeditions. Each program has independent levels, records and currency: Endurance, Impulse or Torque.
-- Finishing a run collects research and takes you to Research. Automatic repetition is optional and unlocks after three runs. Shared Research Points fund all programs.
+- Finishing a run collects research and takes you to Research. Automatic repetition is optional and unlocks after four runs. Shared Research Points fund all programs.
+- Finish run displays the exact additional RP that will be banked; previously paid milestone RP is not counted twice. Run controls stay inside the viewport on desktop and mobile.
+- Sky, terrain and road colors blend across biome boundaries. Roadside buildings and trees occupy their stretch of the route, gradually changing density ahead of the runner.
 - The landscape changes with expedition distance: city (0–100 m), woodland trail (100 m–1 km), country road (1–10 km), desert (10–100 km), alpine (100–1,000 km), then aurora.
-- Unlock projectile and wheeled programs, then research equipment from paper planes and slingshots to cannons, accelerators, bikes and rockets.
+- Projectiles appear after three runs, a 1 km best, four runner discoveries and 1.5 km total travel (220 RP). Wheels follow after six runs, projectiles and 6 km total (600 RP). Unlocked programs have dedicated buttons. Research vehicles from paper planes and slingshots to cannons, accelerators, bikes and rockets.
 
-The research web contains **108 discoveries** across three programs and shared science. Branches connect through alternative prerequisites and hybrid discoveries requiring two disciplines. All discoveries are permanent. The default research view shows the available frontier by discipline, clear affordability and resource shortfalls. Details expose AND/OR prerequisites and the paths a discovery opens, without drawing lines through other cards. The full catalog is available on demand.
+The research web contains **108 discoveries** across three programs and shared science. Branches connect through alternative prerequisites and hybrid discoveries requiring two disciplines. All discoveries are permanent. The motion atlas is a pannable, zoomable radial map with four research disciplines. Green nodes are affordable, owned nodes are filled, and unexplored discoveries reveal gradually. The side panel shows exact effects, both currencies, shortfalls and AND/OR prerequisites. Ten stats cover speed, stamina, acceleration, energy efficiency, recovery, fatigue resistance, tailwind, learning, research yield and discovery luck. Unique mechanics include second wind, a rolling start, improved supplies, biome surveys and route-specific bonuses.
 
 Equipment randomly drops during runs. Distance improves rarity odds, but lucky finds are possible from the beginning. Common gear has one +5% bonus; Uncommon, Rare and Epic gear have two, three and four bonuses. Equip one piece per slot (footwear, outfit, instrument) per program between runs. Replacing an item shows the stat differences. Spare items can be recycled for research. Drop RNG and the next drop time are saved to prevent refresh rerolls.
 

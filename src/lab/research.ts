@@ -1,5 +1,32 @@
+import { RUNNER, PROJECTILE, WHEELS, SHARED } from "./discoveries";
 export type Program = "runner" | "projectile" | "wheels";
-export type Stat = "speed" | "stamina" | "yield" | "xp";
+export type Stat =
+  | "speed"
+  | "stamina"
+  | "yield"
+  | "xp"
+  | "acceleration"
+  | "economy"
+  | "recovery"
+  | "resilience"
+  | "wind"
+  | "luck";
+export const STAT_LABELS: Record<Stat, string> = {
+  speed: "Cruising speed",
+  stamina: "Stamina capacity",
+  yield: "Research yield",
+  xp: "Learning",
+  acceleration: "Acceleration",
+  economy: "Energy efficiency",
+  recovery: "Recovery",
+  resilience: "Fatigue resistance",
+  wind: "Tailwind",
+  luck: "Discovery luck",
+};
+export const effectLabel = (stat: Stat, value: number) =>
+  stat === "wind"
+    ? "+" + (value * 2).toFixed(1) + " m/s tailwind"
+    : "+" + Math.round(value * 100) + "% " + STAT_LABELS[stat].toLowerCase();
 export interface ResearchNode {
   id: string;
   name: string;
@@ -11,11 +38,12 @@ export interface ResearchNode {
   localCost: number;
   requires: string[];
   anyOf?: string[];
-  kind: "permanent" | "module";
+  kind: "permanent";
   stat: Stat;
   power: number;
-  penalty?: Stat;
-  penaltyPower?: number;
+  effects: Partial<Record<Stat, number>>;
+  icon: string;
+  ability?: string;
 }
 export const PROGRAMS = {
   runner: {
@@ -41,8 +69,8 @@ export const PROGRAMS = {
     person: "Dr. Noor",
     role: "Ballistics researcher",
     description: "It starts with a rock. It ends near light speed.",
-    unlock: 120,
-    distance: 400,
+    unlock: 220,
+    distance: 1500,
     base: 9,
     unit: "launch energy",
   },
@@ -55,234 +83,79 @@ export const PROGRAMS = {
     person: "Dr. Vega",
     role: "Mechanical engineer",
     description: "Less friction. More wheels. Eventually, rockets.",
-    unlock: 350,
-    distance: 1200,
+    unlock: 600,
+    distance: 6000,
     base: 6.4,
     unit: "battery",
   },
 };
+
 export const LANES: Record<Program | "global", string[]> = {
-  runner: ["Physiology", "Technique", "Engineering", "Experimental"],
+  runner: ["Human engine", "Movement", "Field engineering", "Atmospherics"],
   projectile: [
-    "Throwing arm",
-    "Aerodynamics",
-    "Launch systems",
-    "High-energy physics",
+    "Launch mechanics",
+    "Flight",
+    "Heavy launchers",
+    "Particle science",
   ],
-  wheels: ["Drivetrain", "Chassis", "Power systems", "Experimental"],
-  global: ["Field science", "Laboratory", "Training", "Engineering"],
+  wheels: ["Transmission", "Chassis", "Power", "Road science"],
+  global: ["Knowledge", "Support", "Training", "Engineering"],
 };
-const names: Record<Program, string[][]> = {
-  runner: [
-    [
-      "Warm-up routine",
-      "Aerobic base",
-      "Lactate threshold",
-      "Dense mitochondria",
-      "Efficient lungs",
-      "Synthetic tendons",
-      "Cellular recovery",
-      "Limitless endurance",
-    ],
-    [
-      "Longer stride",
-      "Cadence drills",
-      "Perfect footstrike",
-      "Elastic rebound",
-      "Wind reading",
-      "Flow state",
-      "Neural timing",
-      "Perfect motion",
-    ],
-    [
-      "Footwear design",
-      "Composite materials",
-      "Compression fabrics",
-      "Active cooling",
-      "Exosuit frame",
-      "Servo assistance",
-      "Kinetic armour",
-      "Inertial boots",
-    ],
-    [
-      "Sprint protocol",
-      "Altitude training",
-      "Biofeedback",
-      "Nerve interface",
-      "Muscle fibres II",
-      "Metabolic overdrive",
-      "Quantum stride",
-      "Human singularity",
-    ],
-  ],
-  projectile: [
-    [
-      "Find a good rock",
-      "Wrist mechanics",
-      "Overarm throw",
-      "Rotational launch",
-      "Elastic release",
-      "Robotic arm",
-      "Sonic release",
-      "Orbital throw",
-    ],
-    [
-      "Paper airplane",
-      "Folded winglets",
-      "Glider profile",
-      "Carbon airframe",
-      "Laminar flow",
-      "Hypersonic shape",
-      "Plasma envelope",
-      "Vacuum tunnel",
-    ],
-    [
-      "Slingshot",
-      "Tension bands",
-      "Compound launcher",
-      "Trebuchet",
-      "Field cannon",
-      "Coilgun",
-      "Railgun",
-      "Orbital mass driver",
-    ],
-    [
-      "Motion capture",
-      "Impact chamber",
-      "Magnetic lenses",
-      "Vacuum chamber",
-      "Particle injector",
-      "Linear accelerator",
-      "Synchrotron",
-      "Particle accelerator",
-    ],
-  ],
-  wheels: [
-    [
-      "Ball bearings",
-      "Chain drive",
-      "Precision gears",
-      "Limited-slip axle",
-      "Sequential gearbox",
-      "Electric differential",
-      "Magnetic bearings",
-      "Frictionless drive",
-    ],
-    [
-      "Skateboard",
-      "Soapbox cart",
-      "Bicycle",
-      "Racing kart",
-      "Streamlined racer",
-      "Land-speed car",
-      "Rocket sled",
-      "Maglev prototype",
-    ],
-    [
-      "Foot power",
-      "Flywheel",
-      "Electric motor",
-      "Battery cooling",
-      "Dual motors",
-      "Turbine drive",
-      "Rocket engine",
-      "Fusion drive",
-    ],
-    [
-      "Tyre compound",
-      "Grip telemetry",
-      "Active suspension",
-      "Ground effect",
-      "Stability control",
-      "Ceramic brakes",
-      "Active aero",
-      "Inertial control",
-    ],
-  ],
+const catalog = {
+  runner: RUNNER,
+  projectile: PROJECTILE,
+  wheels: WHEELS,
+  global: SHARED,
 };
-const stats: Stat[] = ["stamina", "speed", "speed", "yield"];
-export const NODES: ResearchNode[] = (Object.keys(names) as Program[]).flatMap(
-  (program) =>
-    names[program].flatMap((lane, col) =>
-      lane.map((name, tier) => ({
-        id: `${program}-${col}-${tier}`,
-        name,
-        program,
-        lane: col,
-        tier,
-        description: `${col === 3 ? "Equip to gain" : "Permanently adds"} ${col === 0 ? "12% capacity and recovery" : col === 3 ? "18% research from every trial" : "14% top speed"}. ${tier === 0 ? "The first step of this research line." : "Builds on the previous discovery."}`,
-        cost: Math.round(12 * Math.pow(2.05, tier)),
-        localCost: Math.round(6 * Math.pow(1.85, tier)),
-        requires: [],
-        kind: col === 3 ? ("module" as const) : ("permanent" as const),
-        stat: stats[col],
-        power: col === 0 ? 0.12 : col === 3 ? 0.18 : 0.14,
-      })),
+export const NODES: ResearchNode[] = Object.entries(catalog).flatMap(
+  ([program, lanes]) =>
+    lanes.flatMap((lane, l) =>
+      lane.map(([name, description, effects, icon, ability], tier) => {
+        const p = program as Program | "global",
+          id = (lane: number, t: number) => p + "-" + lane + "-" + t;
+        let requires: string[] = [],
+          anyOf: string[] | undefined;
+        if (p === "global") {
+          if (tier) requires = [id(l, tier - 1)];
+          if (tier === 2)
+            anyOf = ["runner-2-3", "projectile-2-3", "wheels-2-3"];
+        } else if (tier === 0) {
+          requires = l === 1 ? [id(0, 0)] : l === 3 ? [id(2, 0)] : [];
+        } else if (tier === 1 || tier === 2) requires = [id(l, 0)];
+        else if (tier === 3) requires = [id(l, 1), id(l, 2)];
+        else if (tier === 4) requires = [id(l, 1)];
+        else if (tier === 5) requires = [id(l, 2)];
+        else if (tier === 6) anyOf = [id(l, 3), id(l, 4)];
+        else requires = [id(l, 5), id(l, 6), id((l + 1) % 4, 3)];
+        const stat = Object.keys(effects)[0] as Stat;
+        return {
+          id: id(l, tier),
+          name,
+          description,
+          program: p,
+          lane: l,
+          tier,
+          cost:
+            p === "global"
+              ? 40 * Math.pow(4, tier)
+              : Math.round(
+                  [12, 28, 34, 95, 160, 220, 540, 1400][tier] *
+                    (l === 3 ? 1.15 : 1),
+                ),
+          localCost:
+            p === "global" ? 0 : [6, 12, 15, 32, 50, 65, 130, 300][tier],
+          requires,
+          anyOf,
+          kind: "permanent" as const,
+          stat,
+          power: effects[stat]!,
+          effects,
+          icon,
+          ability,
+        };
+      }),
     ),
 );
-for (let lane = 0; lane < 4; lane++)
-  for (let tier = 0; tier < 3; tier++)
-    NODES.push({
-      id: `global-${lane}-${tier}`,
-      name: [
-        ["Better notebooks", "Peer review", "Open science"],
-        ["Sample archive", "Field logistics", "Research network"],
-        ["Team coaching", "Shared techniques", "Collective intelligence"],
-        ["Precision tools", "Rapid prototyping", "Unified engineering"],
-      ][lane][tier],
-      description: [
-        "+12% research for all programs.",
-        "+12% research for all programs.",
-        "+12% experience for all programs.",
-        "+12% speed for all programs.",
-      ][lane],
-      program: "global",
-      lane,
-      tier,
-      cost: 40 * Math.pow(4, tier),
-      localCost: 0,
-      requires: tier ? [`global-${lane}-${tier - 1}`] : [],
-      kind: "permanent",
-      stat: lane === 2 ? "xp" : lane === 3 ? "speed" : "yield",
-      power: 0.12,
-    });
-// A directed research web: entry points, alternative paths and hybrid discoveries.
-// Deep hybrids require knowledge from two disciplines. Alternate paths are OR gates.
-for (const n of NODES) {
-  if (n.program === "global") {
-    if (n.tier === 2) n.anyOf = ["runner-2-2", "projectile-2-2", "wheels-2-2"];
-    continue;
-  }
-  const id = (lane: number, tier: number) =>
-    n.program + "-" + lane + "-" + tier;
-  if (n.tier === 0) {
-    n.requires = n.lane === 2 ? [id(0, 0)] : n.lane === 3 ? [id(1, 0)] : [];
-  } else if ([3, 5, 7].includes(n.tier)) {
-    n.requires = [id(n.lane, n.tier - 1), id((n.lane + 1) % 4, n.tier - 1)];
-  } else if (n.tier === 1) {
-    n.requires = [id(n.lane, 0)];
-  } else {
-    n.requires = [];
-    n.anyOf = [id(n.lane, n.tier - 1), id((n.lane + 3) % 4, n.tier - 1)];
-  }
-  n.kind = "permanent";
-  n.power =
-    (n.lane === 0 ? 0.16 : n.lane === 3 ? 0.12 : 0.18) * (1 + n.tier * 0.4);
-  n.description =
-    "+" +
-    Math.round(n.power * 100) +
-    "% " +
-    {
-      speed: "top speed",
-      stamina: "stamina capacity",
-      yield: "research",
-      xp: "experience",
-    }[n.stat] +
-    " permanently.";
-}
-const logistics = NODES.find((n) => n.id === "global-1-1")!;
-logistics.description =
-  "Unlock 3 field supplies per run. Each restores 27% stamina. +12% research for all programs.";
 export const NODE_MAP = new Map(NODES.map((n) => [n.id, n]));
 export const VARIANTS: Record<
   Program,

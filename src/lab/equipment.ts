@@ -1,4 +1,4 @@
-import type { Program, Stat } from "./research";
+import { STAT_LABELS, type Program, type Stat } from "./research";
 export type Slot = "footwear" | "outfit" | "instrument";
 export type Rarity = "Common" | "Uncommon" | "Rare" | "Epic";
 export interface Gear {
@@ -16,12 +16,7 @@ export const SLOT_NAMES = {
   outfit: "Outfit",
   instrument: "Instrument",
 };
-export const STAT_NAMES = {
-  speed: "top speed",
-  stamina: "stamina",
-  yield: "research",
-  xp: "experience",
-};
+export const STAT_NAMES = STAT_LABELS;
 export const RARITIES: Rarity[] = ["Common", "Uncommon", "Rare", "Epic"];
 // Saved per-expedition state keeps refreshes from rerolling a pending drop.
 export function random(seed: number): [number, number] {
@@ -40,6 +35,7 @@ export function rollGear(
   distance: number,
   seed: number,
   serial: number,
+  luck = 1,
 ): { gear: Gear; seed: number } {
   let state = seed;
   const next = () => {
@@ -47,7 +43,7 @@ export function rollGear(
     state = s;
     return v;
   };
-  const rarity = rarityAt(distance, next());
+  const rarity = rarityAt(distance, next() / Math.max(1, luck));
   const tier = RARITIES.indexOf(rarity);
   const slot = SLOTS[Math.floor(next() * SLOTS.length)];
   const baseNames = {
@@ -65,7 +61,20 @@ export function rollGear(
       "Quantum compass",
     ],
   };
-  const pool: Stat[] = ["speed", "stamina", "yield", "xp"];
+  const pool: Stat[] =
+    tier === 0
+      ? ["speed", "stamina", "yield", "xp"]
+      : [
+          "speed",
+          "stamina",
+          "yield",
+          "xp",
+          "acceleration",
+          "economy",
+          "recovery",
+          "resilience",
+          "luck",
+        ];
   const affixes = [];
   for (let i = 0; i <= tier; i++) {
     const [stat] = pool.splice(Math.floor(next() * pool.length), 1);
