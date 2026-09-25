@@ -1,4 +1,5 @@
 import { solveLeg } from "./animation";
+import { createTerrain, routeSurface } from "./terrain";
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
@@ -40,7 +41,7 @@ export default function World({
       );
       return;
     }
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.35));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -54,9 +55,9 @@ export default function World({
     scene.background = new THREE.Color("#c0cdd2");
     scene.fog = new THREE.Fog("#c0cdd2", 28, 85);
     const camera = new THREE.PerspectiveCamera(43, 1, 0.1, 150);
-    camera.position.set(8, 5.5, 10);
+    camera.position.set(5.8, 3.5, 8.8);
     const controls = new OrbitControls(camera, renderer.domElement);
-    controls.target.set(2, 1, 0);
+    controls.target.set(1, 1.15, 0);
     controls.enableDamping = true;
     controls.enablePan = false;
     controls.minDistance = 5;
@@ -66,11 +67,11 @@ export default function World({
     const sun = new THREE.DirectionalLight("#fff1d2", 2.4);
     sun.position.set(8, 14, 10);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(1024, 1024);
-    sun.shadow.camera.left = -6;
-    sun.shadow.camera.right = 6;
-    sun.shadow.camera.top = 5;
-    sun.shadow.camera.bottom = -5;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.camera.left = -18;
+    sun.shadow.camera.right = 18;
+    sun.shadow.camera.top = 14;
+    sun.shadow.camera.bottom = -14;
     sun.shadow.normalBias = 0.015;
     scene.add(sun);
     const groundMat = new THREE.MeshStandardMaterial({
@@ -82,25 +83,8 @@ export default function World({
     ground.position.y = -0.035;
     ground.receiveShadow = true;
     scene.add(ground);
-    const roadMat = new THREE.MeshStandardMaterial({
-      color: "#677575",
-      roughness: 1,
-    });
-    const road = new THREE.Mesh(new THREE.PlaneGeometry(180, 4.8), roadMat);
-    road.rotation.x = -Math.PI / 2;
-    road.position.y = 0.001;
-    road.receiveShadow = true;
-    scene.add(road);
-    const edgeMat = new THREE.MeshStandardMaterial({ color: "#d6d6bd" });
-    for (const z of [-2.55, 2.55]) {
-      const edge = new THREE.Mesh(
-        new THREE.BoxGeometry(180, 0.13, 0.3),
-        edgeMat,
-      );
-      edge.position.set(0, -0.04, z);
-      edge.receiveShadow = true;
-      scene.add(edge);
-    }
+    const terrain = createTerrain();
+    scene.add(terrain.mesh);
     const marks = new THREE.InstancedMesh(
       new THREE.BoxGeometry(1.7, 0.012, 0.07),
       new THREE.MeshStandardMaterial({ color: "#d7ddc5" }),
@@ -174,19 +158,38 @@ export default function World({
       return result;
     }
     let sceneryBiome = 0;
-    function scenery(name: string, count: number, offset: number, scale = 1) {
+    function scenery(
+      name: string,
+      count: number,
+      offset: number,
+      scale = 1,
+      near = false,
+    ) {
       const src = bake(name);
       const positions = Array.from({ length: count }, (_, i) => ({
-        x: (i / count) * 120 - 60 + offset,
-        z: -(6.5 + ((i * 7) % 12)),
-        scale: scale * (0.8 + (i % 4) * 0.14),
-        rotation: i % 2 ? Math.PI : 0,
+        x: (i / count) * 120 + offset,
+        z: name.match(/Townhouse|Bakery|Workshop|Apartments|Greenhouse/)
+          ? -(8 + (i % 2) * 5)
+          : near
+            ? -(3.2 + ((i * 7) % 4) * 0.3)
+            : -(5 + ((i * 7 + offset) % 15)),
+        scale:
+          scale *
+          (name.match(/Townhouse|Bakery|Workshop|Apartments|Greenhouse/)
+            ? 0.95
+            : 0.8 + (i % 5) * 0.11),
+        rotation: name.match(
+          /Townhouse|Bakery|Workshop|Apartments|Greenhouse|StreetLamp|ParkBench/,
+        )
+          ? 0
+          : i * 2.399,
       }));
       for (const c of src.children) {
         if (!(c instanceof THREE.Mesh)) continue;
         const mesh = new THREE.InstancedMesh(c.geometry, c.material, count);
         mesh.receiveShadow = true;
-        mesh.castShadow = false;
+        mesh.castShadow = true;
+        mesh.frustumCulled = false;
         scene.add(mesh);
         foliage.push({ mesh, positions, region: sceneryBiome });
       }
@@ -195,27 +198,44 @@ export default function World({
       sceneryBiome = index;
       const name = BIOMES[index].name;
       if (name === "City limits") {
-        scenery("CityBlock", 18, 0);
-        scenery("TrailLamp", 20, 3);
+        ["Townhouse", "Bakery", "Workshop", "Apartments", "Greenhouse"].forEach(
+          (n, i) => scenery(n, 4, i * 6),
+        );
+        scenery("StreetLamp", 14, 3, 1, true);
+        scenery("Rowan", 12, 5, 0.8);
+        scenery("ParkBench", 7, 8, 1, true);
       } else if (name === "Lanternwood trail") {
-        scenery("Pine", 58, 0, 1.3);
-        scenery("TrailLamp", 16, 2);
-        scenery("Boulder", 15, 4, 0.65);
+        scenery("Oak", 15, 0, 1.05);
+        scenery("Birch", 22, 3);
+        scenery("Spruce", 24, 5, 1.1);
+        scenery("Rowan", 12, 8, 0.9);
+        scenery("StreetLamp", 10, 2, 0.86, true);
+        scenery("FernPatch", 36, 4, 1.1, true);
+        scenery("FieldRock", 16, 7, 0.75, true);
       } else if (name === "Open countryside") {
         scenery("Barn", 8, 0);
-        scenery("Pine", 22, 4, 0.9);
-        scenery("Boulder", 12, 2, 0.7);
+        scenery("Oak", 14, 4, 1.1);
+        scenery("Rowan", 10, 8);
+        scenery("FieldRock", 12, 2, 0.7);
       } else if (name === "Redstone desert") {
         scenery("Cactus", 35, 0);
         scenery("Boulder", 28, 5, 1.3);
       } else {
         scenery("SnowPeak", 20, 0, 1.5);
-        scenery("Pine", 24, 5, 0.8);
+        scenery("Spruce", 24, 5, 0.8);
       }
     }
-    new GLTFLoader().load(
-      import.meta.env.BASE_URL + "models/move-lab.glb",
-      (gltf) => {
+    const loader = new GLTFLoader();
+    Promise.all(
+      ["move-world.glb", "move-lab.glb"].map((name) =>
+        loader.loadAsync(import.meta.env.BASE_URL + "models/" + name),
+      ),
+    ).then(
+      ([gltf, legacy]) => {
+        // Authored character and scenery take precedence; retain later vehicles.
+        for (const child of [...legacy.scene.children])
+          if (!gltf.scene.getObjectByName(child.name)) gltf.scene.add(child);
+        collect(legacy.scene);
         if (!alive) {
           collect(gltf.scene);
           geometries.forEach((g) => g.dispose());
@@ -227,7 +247,6 @@ export default function World({
         BIOMES.forEach((_, i) => buildBiome(i));
         setLoading(false);
       },
-      undefined,
       () => {
         if (alive) {
           setError(
@@ -284,7 +303,8 @@ export default function World({
           (t.distance - renderDistance) * (1 - Math.exp(-dt * 3));
       renderTime += dt;
       if (t) renderTime += (t.time - renderTime) * dt * 3;
-      const blend = biomeBlend(t?.distance ?? 0);
+      const blend = biomeBlend(renderDistance);
+      terrain.update(renderDistance);
       const from = BIOMES[blend.from],
         to = BIOMES[blend.to];
       const sky = new THREE.Color(from.sky).lerp(
@@ -297,39 +317,14 @@ export default function World({
         new THREE.Color(from.color).lerp(new THREE.Color(to.color), blend.mix),
         1 - Math.exp(-dt * 1.4),
       );
-      const roadColor = (b: typeof from) =>
-        b.short === "Forest"
-          ? "#86765a"
-          : b.short === "Desert"
-            ? "#736b63"
-            : "#647273";
-      roadMat.color.lerp(
-        new THREE.Color(roadColor(from)).lerp(
-          new THREE.Color(roadColor(to)),
-          blend.mix,
-        ),
-        1 - Math.exp(-dt * 1.4),
-      );
-      const forest =
-        (blend.from === 1 ? 1 - blend.mix : 0) +
-        (blend.to === 1 ? blend.mix : 0);
-      const markMaterial = marks.material as THREE.MeshStandardMaterial;
-      markMaterial.transparent = true;
-      markMaterial.opacity = THREE.MathUtils.lerp(
-        markMaterial.opacity,
-        1 - forest,
-        1 - Math.exp(-dt * 1.4),
-      );
       for (let i = 0; i < 30; i++) {
-        matrix.makeTranslation(
-          ((i * 6 - renderDistance * 0.65 + 9000) % 180) - 90,
-          0.013,
-          -1.5,
-        );
+        const x = ((i * 6 - renderDistance * 0.65 + 9000) % 180) - 90;
+        const surface = routeSurface(renderDistance + x / 0.65);
+        matrix.makeScale(surface.markings, 1, surface.markings);
+        matrix.setPosition(x, 0.013, -1.5);
         marks.setMatrixAt(i, matrix);
       }
       marks.instanceMatrix.needsUpdate = true;
-      marks.visible = markMaterial.opacity > 0.01;
       const visualDistance = renderDistance * 0.65;
       for (const item of foliage) {
         // Roadside objects belong to their physical stretch of the route.
@@ -385,6 +380,8 @@ export default function World({
             "ArmR",
             "ElbowL",
             "ElbowR",
+            "Torso",
+            "HeadRig",
           ]) {
             const part = scientist.getObjectByName(name);
             if (part) parts.set(name, part);
@@ -426,7 +423,9 @@ export default function World({
         active = key;
       }
       const moving = !!t && renderSpeed > 0.15;
-      gait += dt * Math.min(2.8, renderSpeed * 0.52) * Math.PI * 2;
+      const stride = s.pace === "recover" ? 0.25 : 0.38;
+      gait +=
+        dt * Math.min(2.8, (renderSpeed * 0.65) / (4 * stride)) * Math.PI * 2;
       if (scientist) {
         scientist.position.set(s.program === "projectile" ? -2 : 0, 0.012, 0);
         scientist.visible =
@@ -435,8 +434,21 @@ export default function World({
           variant.id === "bike";
         const running = s.program === "runner" && moving;
         const walk = s.pace === "recover";
-        const hipHeight = 0.95 - (running ? 0.075 : 0);
-        scientist.position.y = 0.012 - (running ? 0.075 : 0);
+        const bob = running
+          ? 0.018 * Math.cos(gait * 2)
+          : Math.sin(renderTime * 2) * 0.003;
+        const hipHeight = (running ? 0.83 : 0.95) + bob;
+        scientist.position.y = 0.012 + hipHeight - 0.95;
+        const torso = parts.get("Torso"),
+          head = parts.get("HeadRig");
+        if (torso) {
+          torso.rotation.z = running ? -0.045 : 0;
+          torso.rotation.y = running ? Math.sin(gait) * 0.04 : 0;
+        }
+        if (head)
+          head.rotation.y = running
+            ? -Math.sin(gait) * 0.025
+            : Math.sin(renderTime * 0.5) * 0.035;
         for (const side of ["L", "R"]) {
           const leg = parts.get("Leg" + side),
             knee = parts.get("Knee" + side),
@@ -446,7 +458,6 @@ export default function World({
           const phase = (gait + (side === "R" ? Math.PI : 0)) % (Math.PI * 2);
           const stance = phase < Math.PI;
           const phase01 = phase / Math.PI;
-          const stride = running ? (walk ? 0.2 : 0.34) : 0;
           const footX = running
             ? stance
               ? stride * (1 - 2 * phase01)
@@ -463,7 +474,7 @@ export default function World({
           if (foot) foot.rotation.z = pose.foot;
           if (arm)
             arm.rotation.z = running
-              ? Math.sin(phase) * 0.6
+              ? -Math.cos(phase) * 0.55 - 0.15
               : s.program === "projectile" && t
                 ? -0.5 + Math.sin(renderTime * 1.2) * 0.9
                 : 0;
@@ -497,11 +508,11 @@ export default function World({
       if (view.current !== lastView) {
         lastView = view.current;
         camera.position.set(
-          lastView ? 6 : 8,
-          lastView ? 3.3 : 5.5,
-          lastView ? 6 : 10,
+          lastView ? 3.6 : 5.8,
+          lastView ? 2.1 : 3.5,
+          lastView ? 4.3 : 8.8,
         );
-        controls.target.set(lastView ? 1 : 2, 1, 0);
+        controls.target.set(lastView ? 0.3 : 1, 1.15, 0);
       }
       controls.update();
       renderer.render(scene, camera);
