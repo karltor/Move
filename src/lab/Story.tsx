@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { totalTrials, type Save } from "./game";
+import { equipmentUnlocked, totalTrials, type Save } from "./game";
 export const STORIES = {
   intro: {
     tag: "An unsolicited research proposal",
@@ -11,11 +11,11 @@ export const STORIES = {
       ],
       [
         "UNKNOWN VISITOR",
-        "Your laboratory's inertia engine has misplaced Tuesday. To restart it, I need motion data. A lot of motion data. Your budget covers one scientist and two shoes. Guess who's the vehicle.",
+        "Your inertia engine has misplaced Tuesday. I can fix that. Probably. First I need motion data. Your budget covers one scientist and two shoes. Guess who's the vehicle.",
       ],
       [
         "DR. ELLIS",
-        "We run. We measure. We build something faster. Start a run; stamina decides how far we get. The visitor calls himself SANIK. His business card is warm.",
+        "Start a run. Collect data. Improve one thing. Repeat. We won't reach the forest immediately; that last hill is vicious. The visitor calls himself SANIK. He is a hedgehog. HR has questions.",
       ],
     ],
     button: "For science. Apparently.",
@@ -26,7 +26,7 @@ export const STORIES = {
     pages: [
       [
         "SANIK",
-        "Trees. Nature's crash barriers. Keep an eye on your stamina, and the RP on your finish button: that's what you'll bank if you stop now. The money already in the lab stays there. Even if you trip.",
+        "You made it! Trees: nature's crash barriers. This trail asks more of your legs. The finish button shows exactly how many RP you'll keep. Exhaustion banks them too. I have negotiated this with the trees.",
       ],
     ],
     button: "Keep moving",
@@ -37,14 +37,14 @@ export const STORIES = {
     pages: [
       [
         "DR. ELLIS",
-        "We can turn this data into actual improvements. Follow the research branches, pick a discovery and compare its effects. Shoes save energy. Breathing helps recovery. The fan is... technically aerodynamics.",
+        "A proper warm-up gives us 25% more stamina. Better running shoes give us 15% more top speed. Gather enough data for one improvement. Which problem should we solve first?",
       ],
       [
         "SANIK",
-        "Every discovery stays with the lab. Some need two ideas working together; others let you take a different route. I once took a shortcut so good I arrived yesterday. Unrelated to Tuesday. Probably.",
+        "Both are permanent. When you can afford one, pick it, run again, and see what changed. More paths open as you learn. Your legs also gain XP during every run. Mine gained a parking ticket.",
       ],
     ],
-    button: "Open the research map",
+    button: "Inspect the research desk",
   },
   equipment: {
     tag: "An unexpected find",
@@ -56,7 +56,7 @@ export const STORIES = {
       ],
       [
         "DR. ELLIS",
-        "Equipment has its own menu now. Fit one piece in each slot between runs. Please stop calling the abandoned coat a 'legendary torso'.",
+        "Fit one piece in each slot between runs. Your shoes, outfit and accessory show up on the scientist. Please stop calling the abandoned coat a 'legendary torso'.",
       ],
     ],
     button: "Noted. Legendary torso.",
@@ -67,7 +67,7 @@ export const STORIES = {
     pages: [
       [
         "DR. ELLIS",
-        "SANIK arrived before us. On foot. He claims the orange scarf is 'aerodynamic paperwork'. We are investigating.",
+        "SANIK arrived before us. On foot. He claims the orange scarf is 'aerodynamic paperwork'. The quills are apparently a comb-over. We are investigating.",
       ],
       [
         "SANIK",
@@ -107,7 +107,8 @@ export function nextStory(s: Save, tab: string): StoryId | null {
   if (!seen("intro")) return "intro";
   if (tab === "research" && totalTrials(s) > 0 && !seen("research"))
     return "research";
-  if (s.inventory.length && !seen("equipment")) return "equipment";
+  if (equipmentUnlocked(s) && s.inventory.length && !seen("equipment"))
+    return "equipment";
   if (s.unlocked.length > 1 && !seen("programs")) return "programs";
   const reach = Math.max(
     s.trial?.distance ?? 0,
@@ -118,53 +119,114 @@ export function nextStory(s: Save, tab: string): StoryId | null {
   if (reach >= 10000 && !seen("far")) return "far";
   return null;
 }
-export function SanikPortrait() {
+export function SanikPortrait({ anonymous = false }: { anonymous?: boolean }) {
   return (
     <svg
       viewBox="0 0 260 330"
       role="img"
-      aria-label="SANIK, a shadowy tall figure in a plum coat, angular helmet and amber scarf"
+      aria-label={
+        anonymous
+          ? "An unidentified, unusually fast visitor"
+          : "SANIK, a mischievous turquoise hedgehog with swept-back quills, an amber scarf and oversized purple running shoes"
+      }
     >
       <defs>
-        <linearGradient id="coat" x1="0" x2="1">
-          <stop stopColor="#323142" />
-          <stop offset="1" stopColor="#686076" />
+        <linearGradient id="sanik-quills" x1="0" y1="0" x2="1" y2="1">
+          <stop stopColor="#2cb6ab" />
+          <stop offset="1" stopColor="#126d78" />
+        </linearGradient>
+        <linearGradient id="sanik-shoes" x1="0" y1="0" x2="0" y2="1">
+          <stop stopColor="#8b63b0" />
+          <stop offset="1" stopColor="#593c7c" />
         </linearGradient>
       </defs>
-      <circle cx="130" cy="148" r="110" fill="#e9dcc3" />
+      <circle cx="130" cy="149" r="112" fill="#dceee4" />
       <path
-        d="M30 259 86 141 173 145 232 273 181 300 77 300Z"
-        fill="url(#coat)"
-      />
-      <path d="m85 126 9-73 37-28 47 35 8 79-48 28Z" fill="#252b37" />
-      <path d="m100 75 27-22 38 24-6 25-54 0Z" fill="#101923" />
-      <path d="m111 91 46-3-7 13-34 2Z" fill="#efb245" />
-      <path d="m80 144 76-9 30 14-33 22-62-1Z" fill="#d88235" />
-      <path d="m161 150 69 12 23 30-53-13-44-17Z" fill="#edb44a" />
-      <path d="m91 169 32 45-19 65-37-14Z" fill="#373848" />
-      <path d="m173 173-32 42 15 68 30-17Z" fill="#807386" />
-      <path
-        d="m126 213 4 87"
-        stroke="#b7a99e"
-        strokeWidth="2"
-        strokeDasharray="4 12"
-      />
-      <rect
-        x="105"
-        y="239"
-        width="57"
-        height="29"
-        rx="4"
-        fill="#b2c1bc"
-        transform="rotate(-8 130 250)"
-      />
-      <path d="M113 246h27m-25 7h18" stroke="#425c60" strokeWidth="2" />
-      <path
-        d="m73 299 111 0"
-        stroke="#34444d"
-        strokeWidth="12"
+        d="M24 140h35m-42 15h28m-6 18h22M198 75h32m-17 15h27"
+        stroke="#98c9bd"
+        strokeWidth="3"
         strokeLinecap="round"
       />
+      <ellipse cx="140" cy="294" rx="88" ry="10" fill="#a7bcab" opacity=".4" />
+      <g
+        stroke="#21494c"
+        strokeWidth="3"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      >
+        <path
+          d="m111 158-41 12 16-27-57 1 43-27-53-18 54-10-36-34 58 10 29-32 41 30 25 51-30 48Z"
+          fill="url(#sanik-quills)"
+        />
+        <path
+          d="m139 216-18 52-23 0 13-57m41-2 17 42-17 15-29-49"
+          fill="#299690"
+        />
+        <path
+          d="m97 260 30 5-8 23H57c-4-16 24-26 40-28Z"
+          fill="url(#sanik-shoes)"
+        />
+        <path
+          d="m160 252 24 8 32 18c6 4 7 12-1 14h-73l2-24Z"
+          fill="url(#sanik-shoes)"
+        />
+        <path d="M56 287h66v8H57Zm85 1h78v9h-79Z" fill="#f6eed6" />
+        <path
+          d="m88 267 25 4m-29 3 26 4m55-12 19 8m-24-2 20 9"
+          stroke="#e4dfc9"
+        />
+        <path
+          d="M108 152c-12 19-15 43-4 65 14 15 44 15 54-5 4-17-3-37-17-54Z"
+          fill="#249b94"
+        />
+        <path
+          d="M122 169c-13 2-20 24-13 38 8 14 27 11 32-1 3-13-2-35-19-37Z"
+          fill="#e8cda0"
+          strokeWidth="2"
+        />
+        <path
+          d="m102 165-22 20 12 22m50-41 27 23 14-18"
+          fill="none"
+          stroke="#289d94"
+          strokeWidth="14"
+        />
+        <path d="m90 198 14 2 4 16-12 11-13-9 0-11Z" fill="#fff5db" />
+        <path
+          d="m173 178 13-5 4-13 9-8 6 3-7 16 6 1 4-6 6 2-1 16-13 13-15-5Z"
+          fill="#fff5db"
+        />
+        <path d="m142 149 29 2 41-18-10 20 35 3-31 15-56-6Z" fill="#e2a344" />
+        <path d="M103 71 101 42l22 20m33 0 16-20 6 35" fill="#32afa5" />
+        <path d="m106 60 8 8m49-5 7-10" stroke="#e5c699" strokeWidth="4" />
+        <path
+          d="M117 64c29-12 60 10 63 37 3 29-16 56-41 57-26 0-43-22-41-47 0-20 6-38 19-47Z"
+          fill="#31ada3"
+        />
+        <path
+          d="M107 105c8-10 23-6 28 6 6-15 23-17 32-6l-2 27-52 4Z"
+          fill="#fff6df"
+          strokeWidth="2"
+        />
+        <ellipse cx="124" cy="113" rx="4" ry="9" fill="#203b43" stroke="none" />
+        <ellipse cx="154" cy="109" rx="4" ry="9" fill="#203b43" stroke="none" />
+        <path d="m112 92 17 4m13-6 16-6" fill="none" strokeWidth="4" />
+        <path
+          d="M109 126c8-9 22-7 32-1 8-7 23-10 30-1 1 14-12 27-29 28-18 0-32-10-33-26Z"
+          fill="#e8cda0"
+          strokeWidth="2"
+        />
+        <ellipse
+          cx="164"
+          cy="122"
+          rx="9"
+          ry="6"
+          fill="#233f45"
+          transform="rotate(-16 164 122)"
+        />
+        <path d="m126 135 11 4c9 1 16-3 20-7" fill="none" strokeWidth="2" />
+        <path d="m99 153 46-4 14 10-19 13-36-8Z" fill="#eba744" />
+        <path d="m140 151 13 6-9 16-14-11Z" fill="#c7802f" strokeWidth="2" />
+      </g>
       <text
         x="130"
         y="322"
@@ -173,7 +235,7 @@ export function SanikPortrait() {
         fontSize="10"
         letterSpacing="3"
       >
-        IDENTITY: UNVERIFIED
+        FAST. VAGUE. PROBABLY QUALIFIED.
       </text>
     </svg>
   );
@@ -204,9 +266,18 @@ export default function Story({
         onDone();
       }}
     >
-      <div className="story-art">
-        <SanikPortrait />
-        <span>PROJECT / LOST TUESDAY</span>
+      <div
+        className={
+          "story-art " +
+          (id === "intro" && page < 2 ? "unknown-visitor" : "visitor-revealed")
+        }
+      >
+        <SanikPortrait anonymous={id === "intro" && page < 2} />
+        <span>
+          {id === "intro" && page < 2
+            ? "UNIDENTIFIED / VERY FAST"
+            : "PROJECT / LOST TUESDAY"}
+        </span>
       </div>
       <div className="story-copy">
         <span className="eyebrow">{story.tag}</span>

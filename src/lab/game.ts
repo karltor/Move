@@ -159,7 +159,7 @@ export const clock = (s: number) =>
 export function fresh(): Save {
   const p = (variant: string): Progress => ({
     xp: 0,
-    funds: 15,
+    funds: 0,
     trials: 0,
     best: 0,
     distance: 0,
@@ -170,7 +170,7 @@ export function fresh(): Save {
     version: 2,
     storySeen: [],
     tipsEnabled: true,
-    science: 35,
+    science: 0,
     program: "runner",
     unlocked: ["runner"],
     progress: {
@@ -232,14 +232,87 @@ export const totalTrials = (s: Save) =>
 export const totalDistance = (s: Save) =>
   Object.values(s.progress).reduce((a, p) => a + p.distance, 0) +
   (s.trial?.distance ?? 0);
+export const equipmentUnlocked = (s: Save) =>
+  totalTrials(s) >= 4 && s.progress.runner.bestDistance >= 200;
+export const sharedUnlocked = (s: Save) =>
+  totalTrials(s) >= 10 &&
+  s.progress.runner.bestDistance >= 1000 &&
+  s.researched.filter((id) => id.startsWith("runner-")).length >= 8;
+export function trainingProgress(s: Save) {
+  const xp = s.progress[s.program].xp,
+    lv = level(xp);
+  const current = xp - levelStart(lv),
+    needed = levelStart(lv + 1) - levelStart(lv);
+  return {
+    level: lv,
+    current,
+    needed,
+    progress: current / needed,
+    earned: s.trial?.lastXP ?? 0,
+  };
+}
+
+/** Resistance ramps before a frontier, then eases on entering the next region. */
+export function frontierPressure(distance: number) {
+  const index = BIOMES.indexOf(biomeAt(distance)),
+    region = BIOMES[index];
+  if (!Number.isFinite(region.end)) return Math.pow(2.2, index);
+  const u = Math.max(
+    0,
+    Math.min(1, (distance - region.start) / (region.end - region.start)),
+  );
+  return Math.pow(2.2, index) * (1 + 5 * Math.pow(u, 3));
+}
+
+/** Repeating road efforts create useful acceleration and pace decisions every run. */
+export function routeChallenge(s: Save) {
+  const d = s.trial?.distance ?? 0,
+    bio = biomeAt(d),
+    region = BIOMES.indexOf(bio);
+  const length = region === 0 ? 36 : 60 + region * 20;
+  const segment = Math.floor(d / length),
+    phase = (d % length) / length;
+  const kind = segment % 3;
+  const effort = kind === 1,
+    recovery = kind === 2;
+  const names =
+    region === 0
+      ? ["Open pavement", "The uphill block", "Downhill stretch"]
+      : region === 1
+        ? ["Firm trail", "Root-covered climb", "Sheltered descent"]
+        : ["Open stretch", "Headwind climb", "Sheltered stretch"];
+  const pressure = frontierPressure(d);
+  return {
+    name: names[kind],
+    description: effort
+      ? "The climb slows you down. Save energy here; acceleration rebuilds speed afterwards."
+      : recovery
+        ? "An easier stretch. Recover stamina or use your remaining energy to push ahead."
+        : "Build your rhythm. The next stretch will ask more of your legs.",
+    progress: phase,
+    remaining: length - (d % length),
+    difficulty: (effort ? "effort" : recovery ? "recovery" : "easy") as
+      "effort" | "recovery" | "easy",
+    drainMultiplier: pressure * (effort ? 1.25 : recovery ? 0.78 : 1),
+    speedMultiplier: effort ? 0.62 : recovery ? 1.08 : 1,
+  };
+}
 export function available(s: Save, id: string) {
   const n = NODE_MAP.get(id);
+  // The first debrief offers one experiment; the next run tests that choice.
+  // Bank any extra research earned through careful pacing for later.
+  const firstDebriefComplete =
+    totalTrials(s) === 1 &&
+    s.researched.some((discovery) => discovery.startsWith("runner-"));
   return (
     !!n &&
+    !firstDebriefComplete &&
     !s.researched.includes(id) &&
     n.requires.every((r) => s.researched.includes(r)) &&
     (!n.anyOf?.length || n.anyOf.some((r) => s.researched.includes(r))) &&
-    (n.program === "global" || s.unlocked.includes(n.program))
+    (n.program === "global"
+      ? sharedUnlocked(s)
+      : s.unlocked.includes(n.program))
   );
 }
 export function afford(s: Save, id: string) {
@@ -367,14 +440,14 @@ export function start(
           samples: 0,
           rations: suppliesUnlocked(s) ? 3 : 0,
           supplyCooldown: 0,
-          nextEvent: 65,
+          nextEvent: 30,
           event: null,
           route: "normal",
           restTime: 0,
           lastMilestone: 0,
           lastXP: 0,
           rng: seed >>> 0,
-          nextDrop: 40 + ((seed >>> 0) % 26),
+          nextDrop: 28 + ((seed >>> 0) % 18),
           drops: [],
           secondWind: 0,
           usedSecondWind: false,
@@ -415,56 +488,56 @@ export const EVENTS = [
     title: "A fork in the trail",
     text: "The direct route is exposed. The shaded path is easier on the team.",
     a: "Take the shade",
-    ad: "−20% stamina drain · −10% speed",
+    ad: "−8% stamina drain · −6% speed",
     b: "Take the shortcut",
-    bd: "+15% speed · +25% stamina drain",
+    bd: "+6% speed · +12% stamina drain",
   },
   {
     title: "An interesting discovery",
     text: "A strange sample could help the lab. Collect it, or keep your rhythm?",
     a: "Collect the sample",
-    ad: "+35 research at finish · +10 fatigue",
+    ad: "+3 research at finish · +8 fatigue",
     b: "Keep moving",
-    bd: "+8 program currency · no detour",
+    bd: "+1 program currency · no detour",
   },
   {
     title: "Field support station",
     text: "The support crew has a place to rest. Is the lost time worth the recovery?",
-    a: "Take a 15s break",
-    ad: "Restore 25% stamina · reduce fatigue",
+    a: "Take an 8s break",
+    ad: "Restore 8% stamina · lose 2 fatigue",
     b: "Press on",
-    bd: "+20 research at finish · keep pace",
+    bd: "+2 research at finish · keep pace",
   },
 ];
 export function decide(s: Save, choice: "a" | "b"): Save {
   const t = s.trial;
   if (!t || t.event === null) return s;
   const event = t.event % 3;
-  const next = { ...t, event: null, nextEvent: t.time + 75 };
+  const next = { ...t, event: null, nextEvent: t.time + 45 };
   let progress = s.progress;
   if (event === 0) next.route = choice === "a" ? "shade" : "fast";
   if (event === 1) {
     if (choice === "a") {
-      next.samples += 35;
-      next.fatigue += 10;
+      next.samples += 3;
+      next.fatigue += 8;
     } else
       progress = {
         ...progress,
         [s.program]: {
           ...progress[s.program],
-          funds: progress[s.program].funds + 8,
+          funds: progress[s.program].funds + 1,
         },
       };
   }
   if (event === 2) {
     if (choice === "a") {
-      next.restTime = 15;
-      next.fatigue = Math.max(0, next.fatigue - 10);
+      next.restTime = 8;
+      next.fatigue = Math.max(0, next.fatigue - 2);
       next.energy = Math.min(
         100 * stats(s).stamina - next.fatigue,
-        next.energy + 25 * stats(s).stamina,
+        next.energy + 8 * stats(s).stamina,
       );
-    } else next.samples += 20;
+    } else next.samples += 2;
   }
   return {
     ...s,
@@ -478,15 +551,19 @@ export function pendingRewards(s: Save) {
     st = stats(s);
   if (!t) return { science: 0, funds: 0, xp: 0 };
   const survey = hasAbility(s, "survey")
-    ? BIOMES.filter((b) => b.start > 0 && b.start <= t.distance).length * 20
+    ? BIOMES.filter((b) => b.start > 0 && b.start <= t.distance).length * 5
     : 0;
+  // A reading from a few seconds of motion is thin evidence. This curve makes
+  // full expeditions more valuable per minute than repeatedly restarting.
+  const observation = Math.pow(Math.min(1, t.time / 65), 1.5);
   return {
     science: Math.floor(
-      (Math.sqrt(t.distance) * 3 + t.time * 0.12 + t.samples + survey) *
-        st.yield,
+      (Math.sqrt(t.distance) * 2.1 + t.samples + survey) *
+        st.yield *
+        observation,
     ),
-    funds: Math.floor(Math.sqrt(t.distance) * 1.3 + t.time * 0.08),
-    xp: Math.floor((Math.sqrt(t.distance) + t.time * 0.04) * st.xp),
+    funds: Math.floor(Math.sqrt(t.distance) * 0.5),
+    xp: 0,
   };
 }
 export function finish(s: Save): Save {
@@ -499,7 +576,7 @@ export function finish(s: Save): Save {
     program: s.program,
     science,
     funds,
-    xp,
+    xp: t.lastXP,
     speed: t.peak,
     distance: t.distance,
     duration: t.time,
@@ -531,8 +608,8 @@ export function finish(s: Save): Save {
       " " +
       PROGRAMS[s.program].currency +
       " · +" +
-      xp +
-      " XP.",
+      t.lastXP +
+      " XP earned along the route.",
   };
 }
 export function step(s: Save, dt: number): Save {
@@ -547,11 +624,11 @@ export function step(s: Save, dt: number): Save {
   }
   const t = { ...s.trial };
   const st = stats(s);
-  const blend = biomeBlend(t.distance);
   const bio = biomeAt(t.distance);
-  let terrainDrain =
-    BIOMES[blend.from].drain * (1 - blend.mix) +
-    BIOMES[blend.to].drain * blend.mix;
+  const challenge = routeChallenge(s);
+  let terrainDrain = challenge.drainMultiplier;
+  if (hasAbility(s, "trailcraft") && t.distance >= 70)
+    terrainDrain = 1 + (terrainDrain - 1) * 0.65;
   if (
     (bio.short === "Desert" && hasAbility(s, "heat")) ||
     (bio.short === "Alpine" && hasAbility(s, "altitude"))
@@ -568,32 +645,40 @@ export function step(s: Save, dt: number): Save {
   t.secondWind = Math.max(0, (t.secondWind ?? 0) - dt);
   t.time += dt;
   t.supplyCooldown = Math.max(0, t.supplyCooldown - dt);
-  if (t.event !== null && t.time >= t.nextEvent + 35) {
+  if (t.event !== null && t.time >= t.nextEvent + 15) {
     t.event = null;
-    t.nextEvent = t.time + 75;
+    t.nextEvent = t.time + 45;
   }
-  if (totalTrials(s) > 0 && t.event === null && t.time >= t.nextEvent)
-    t.event = Math.floor((t.nextEvent - 65) / 75) % 3;
+  if (totalTrials(s) >= 3 && t.event === null && t.time >= t.nextEvent)
+    t.event = Math.floor(t.time / 30) % 3;
   const resting = t.restTime > 0;
   t.restTime = Math.max(0, t.restTime - dt);
   const maxEnergy = 100 * st.stamina - t.fatigue;
   t.fatigue +=
-    (dt * (resting ? 0.025 : s.pace === "push" ? 0.16 : 0.075) * terrainDrain) /
+    (dt *
+      (resting
+        ? 0.1
+        : s.pace === "push"
+          ? 0.3
+          : s.pace === "recover"
+            ? 0.2
+            : 0.13) *
+      Math.sqrt(terrainDrain)) /
     st.resilience;
   const routeDrain =
     t.route === "shade"
-      ? 0.8
+      ? 0.92
       : t.route === "fast" && !hasAbility(s, "shortcut")
-        ? 1.25
+        ? 1.12
         : 1;
   const drain =
     ((resting
-      ? -0.6 * st.recovery
+      ? (-0.3 * st.recovery) / terrainDrain
       : s.pace === "recover"
-        ? -0.3 * st.recovery
+        ? (-0.55 * st.recovery) / terrainDrain
         : s.pace === "push"
-          ? 0.8
-          : 0.31) *
+          ? 2.08
+          : 0.8) *
       terrainDrain *
       routeDrain) /
     (s.pace === "recover" || resting ? 1 : st.economy);
@@ -614,30 +699,39 @@ export function step(s: Save, dt: number): Save {
     ? 0
     : (PROGRAMS[s.program].base * st.speed * multiplier + (st.wind - 1) * 2) *
       (hasAbility(s, "negative-split") && t.distance >= 1000 ? 1.15 : 1) *
-      (s.pace === "push" ? 1.55 : s.pace === "recover" ? 0.45 : 1) *
-      (t.route === "shade" ? 0.9 : t.route === "fast" ? 1.15 : 1) *
+      (s.pace === "push" ? 1.3 : s.pace === "recover" ? 0.4 : 1) *
+      challenge.speedMultiplier *
+      (t.route === "shade" ? 0.94 : t.route === "fast" ? 1.06 : 1) *
       (t.energy < 20 ? 0.55 + (0.45 * t.energy) / 20 : 1);
-  t.speed += (goal - t.speed) * (1 - Math.exp(-dt * 1.6 * st.acceleration));
+  // Braking responds quickly; rebuilding speed after climbs takes training.
+  t.speed +=
+    (goal - t.speed) *
+    (1 - Math.exp(-dt * (goal < t.speed ? 1.4 : 0.12 * st.acceleration)));
   t.distance += t.speed * dt;
   t.peak = Math.max(t.peak, t.speed);
   let science = s.science;
   let progress = s.progress;
-  const milestone = Math.floor(t.distance / 100);
-  const xpTick = Math.floor(t.time / 15);
+  const milestone = BIOMES.filter(
+    (b) => b.start > 0 && b.start <= t.distance,
+  ).length;
+  // Keep the training bar live while limiting experience from tiny aborts.
+  const xpTick = Math.floor(
+    Math.sqrt(t.distance) * 2.2 * st.xp * Math.min(1, t.time / 65),
+  );
   if (milestone > t.lastMilestone) {
     const gained = milestone - t.lastMilestone;
-    science += Math.floor(gained * 5 * st.yield);
+    science += Math.floor(gained * 2 * st.yield);
     progress = {
       ...progress,
       [s.program]: {
         ...progress[s.program],
-        funds: progress[s.program].funds + gained * 3,
+        funds: progress[s.program].funds + gained,
       },
     };
     t.lastMilestone = milestone;
   }
   if (xpTick > t.lastXP) {
-    const xp = Math.floor((xpTick - t.lastXP) * 3 * st.xp);
+    const xp = xpTick - t.lastXP;
     progress = {
       ...progress,
       [s.program]: { ...progress[s.program], xp: progress[s.program].xp + xp },
@@ -645,11 +739,11 @@ export function step(s: Save, dt: number): Save {
     t.lastXP = xpTick;
   }
   let next = { ...s, science, progress, trial: t };
-  if (t.time >= t.nextDrop) {
+  if (equipmentUnlocked(s) && t.time >= t.nextDrop) {
     const [roll, seed] = random(t.rng);
     t.rng = seed;
-    t.nextDrop = t.time + (45 + Math.floor(roll * 40)) / Math.sqrt(st.luck);
-    if (roll < 0.8 || s.inventory.length === 0) {
+    t.nextDrop = t.time + (50 + Math.floor(roll * 40)) / Math.sqrt(st.luck);
+    if (roll < 0.45 || s.inventory.length === 0) {
       const drop = rollGear(s.program, t.distance, t.rng, s.nextGear, st.luck);
       t.rng = drop.seed;
       if (s.inventory.length < 90) {
@@ -684,7 +778,7 @@ export function restore(raw: string | null, now = Date.now()): Save {
     const x = JSON.parse(raw);
     if (x.version !== 2) return s;
     const keys = Object.keys(PROGRAMS) as Program[];
-    s.science = number(x.science, 35);
+    s.science = number(x.science, 0);
     s.storySeen = Array.isArray(x.storySeen)
       ? x.storySeen.filter((v: unknown) => typeof v === "string")
       : [];
@@ -721,7 +815,7 @@ export function restore(raw: string | null, now = Date.now()): Save {
       const p = x.progress?.[k] ?? {};
       s.progress[k] = {
         xp: number(p.xp),
-        funds: number(p.funds, 15),
+        funds: number(p.funds, 0),
         trials: Math.floor(number(p.trials)),
         best: number(p.best),
         bestDistance: number(p.bestDistance),

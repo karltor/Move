@@ -6,6 +6,10 @@ import {
   PROGRAMS,
   VARIANTS,
   effectLabel,
+  STAT_PURPOSE,
+  beginnerResearch,
+  firstDiscoveries,
+  runnerDiscoveryCount,
   type ResearchNode,
   type Program,
 } from "./research";
@@ -16,12 +20,274 @@ import {
   stats,
   programDiscovered,
   selectProgram,
+  sharedUnlocked,
+  distance,
   totalTrials,
   type Save,
 } from "./game";
 import Glyph from "./ResearchGlyph";
+import "./research-onboarding.css";
 const C = 720,
   W = 1440;
+type ResearchProps = {
+  game: Save;
+  setGame: React.Dispatch<React.SetStateAction<Save>>;
+  onRun: () => void;
+};
+
+function priceShortfall(game: Save, n: ResearchNode) {
+  return [
+    game.science < n.cost ? `${Math.ceil(n.cost - game.science)} RP` : "",
+    game.progress.runner.funds < n.localCost
+      ? `${Math.ceil(n.localCost - game.progress.runner.funds)} Endurance`
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" + ");
+}
+
+/** Learn one decision at a time before introducing the complete research map. */
+export function FirstExperiments({ game, setGame, onRun }: ResearchProps) {
+  const choices = firstDiscoveries(game.researched),
+    count = runnerDiscoveryCount(game.researched),
+    runs = totalTrials(game),
+    waitingForFirstRun = runs === 0,
+    testingFirstFinding = runs === 1 && count > 0,
+    current = stats(game),
+    last = game.history.find((run) => run.program === "runner"),
+    showNotes = choices.some((n) => n.localCost > 0),
+    firstChoice = count === 0,
+    needsAnotherRun =
+      runs > 0 && firstChoice && !choices.some((n) => afford(game, n.id)),
+    firstPrice = Math.min(...choices.map((n) => n.cost)),
+    missingRP = Math.max(0, firstPrice - Math.floor(game.science)),
+    owned = game.researched
+      .map((id) => NODE_MAP.get(id))
+      .filter((n): n is ResearchNode => n?.program === "runner");
+  return (
+    <section
+      className="first-experiments"
+      aria-label="First research experiments"
+    >
+      <header className="experiments-heading">
+        <div>
+          <span className="eyebrow">Ellis's field notebook</span>
+          <h1>
+            {waitingForFirstRun
+              ? "Start with an experiment."
+              : testingFirstFinding
+                ? "Run again to test this finding."
+                : needsAnotherRun
+                  ? "Run again to collect enough research."
+                  : firstChoice
+                    ? "A better second attempt."
+                    : "Build on what worked."}
+          </h1>
+          <p>
+            {waitingForFirstRun
+              ? "Take Ellis outside first. Distance gives the team research data."
+              : testingFirstFinding
+                ? "The first change is in place. See what it does on the road."
+                : needsAnotherRun
+                  ? `The first experiment costs ${firstPrice} RP. You need ${missingRP} more; your research carries over.`
+                  : firstChoice
+                    ? "Choose one improvement. Run again and feel the difference."
+                    : "Follow a promising idea. Every improvement stays with Ellis."}
+          </p>
+        </div>
+        <div
+          className="experiment-budget"
+          aria-label={`${Math.floor(game.science)} research points available`}
+        >
+          <span>AVAILABLE TO SPEND</span>
+          <strong>
+            {Math.floor(game.science)} <small>RP</small>
+          </strong>
+          {showNotes && (
+            <p>{Math.floor(game.progress.runner.funds)} Endurance</p>
+          )}
+        </div>
+      </header>
+      <div className="experiment-context">
+        {last ? (
+          <p>
+            <b>Last run · {distance(last.distance)}</b>
+            <span>+{last.science} RP brought back</span>
+          </p>
+        ) : (
+          <p>
+            <b>Start with a run.</b>
+            <span>Distance earns research points to spend here.</span>
+          </p>
+        )}
+        <div
+          className="experiment-chapters"
+          aria-label={`${count} of 4 introductory discoveries completed`}
+        >
+          {[0, 1, 2, 3].map((step) => (
+            <i key={step} className={step < count ? "done" : ""}>
+              {step < count ? "✓" : step + 1}
+            </i>
+          ))}
+          <span>Research map opens at 4 discoveries</span>
+        </div>
+      </div>
+      <div
+        className="experiment-choices"
+        style={{
+          gridTemplateColumns: `repeat(${choices.length}, minmax(0, 1fr))`,
+        }}
+      >
+        {choices.map((n) => {
+          const can = afford(game, n.id),
+            comparisonStat =
+              n.effects.stamina !== undefined
+                ? "stamina"
+                : n.effects.speed !== undefined
+                  ? "speed"
+                  : null,
+            comparisonValue = comparisonStat
+              ? (n.effects[comparisonStat] ?? 0)
+              : 0,
+            before =
+              comparisonStat === "stamina"
+                ? current.stamina * 100
+                : PROGRAMS.runner.base * current.speed,
+            after =
+              comparisonStat === "stamina"
+                ? before + comparisonValue * 100
+                : before + PROGRAMS.runner.base * comparisonValue,
+            gateCopy = waitingForFirstRun
+              ? "Finish a first run"
+              : testingFirstFinding
+                ? "Run again to test it"
+                : null;
+          return (
+            <article
+              key={n.id}
+              className={`experiment-option experiment-lane-${n.lane}${can ? " affordable" : ""}`}
+            >
+              <div className="experiment-option-top">
+                <span>{LANES.runner[n.lane]}</span>
+                <b className={can ? "can-afford" : "needs-data"}>
+                  {can ? "Can afford" : (gateCopy ?? "More research needed")}
+                </b>
+              </div>
+              <div className="experiment-illustration" aria-hidden="true">
+                <Glyph name={n.icon} />
+              </div>
+              <h2>{n.name}</h2>
+              <p className="experiment-description">{n.description}</p>
+              <div className="experiment-outcome">
+                <div className="experiment-effects">
+                  {Object.entries(n.effects).map(([stat, value], index) =>
+                    index === 0 ? (
+                      <strong key={stat}>
+                        {effectLabel(stat as keyof typeof current, value)}
+                      </strong>
+                    ) : (
+                      <span key={stat}>
+                        {effectLabel(stat as keyof typeof current, value)}
+                      </span>
+                    ),
+                  )}
+                </div>
+                {comparisonStat && (
+                  <span>
+                    {comparisonStat === "stamina"
+                      ? Math.round(before)
+                      : before.toFixed(1)}{" "}
+                    <i>→</i>{" "}
+                    <b>
+                      {comparisonStat === "stamina"
+                        ? Math.round(after)
+                        : after.toFixed(1)}
+                    </b>{" "}
+                    {comparisonStat === "speed"
+                      ? "m/s cruising target"
+                      : "maximum stamina"}
+                  </span>
+                )}
+                <p>{STAT_PURPOSE[n.stat]}</p>
+                {n.ability && (
+                  <small className="experiment-skill">
+                    Also unlocks a permanent field skill
+                  </small>
+                )}
+              </div>
+              <div className="experiment-purchase">
+                <div>
+                  <strong>{n.cost} RP</strong>
+                  {n.localCost > 0 && <span> + {n.localCost} Endurance</span>}
+                  <small>One purchase · permanent</small>
+                </div>
+                <button
+                  className="primary"
+                  disabled={!can}
+                  onClick={() => setGame((s) => research(s, n.id))}
+                >
+                  {can
+                    ? "Research " + n.name
+                    : (gateCopy ?? "Need " + priceShortfall(game, n))}
+                </button>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+      <footer className="experiment-footer">
+        <div aria-live="polite">
+          {needsAnotherRun ? (
+            <>
+              <b>{missingRP} RP to the first discovery.</b>
+              <p>
+                Go a little farther, or adjust your pace, to bring back more
+                data.
+              </p>
+            </>
+          ) : testingFirstFinding ? (
+            <>
+              <b>One discovery at a time.</b>
+              <p>
+                Your research is permanent. The next run earns data for another
+                choice.
+              </p>
+            </>
+          ) : owned.length ? (
+            <>
+              <b>Already working for you</b>
+              <p>{owned.map((n) => n.name).join(" · ")}</p>
+            </>
+          ) : (
+            <>
+              <b>Neither choice closes the other path.</b>
+              <p>
+                You can come back for the other improvement after another run.
+              </p>
+            </>
+          )}
+          {showNotes && (
+            <small>
+              Endurance is training data earned while running. Some later
+              research uses it alongside RP.
+            </small>
+          )}
+        </div>
+        <button className="primary" onClick={onRun}>
+          {game.trial
+            ? "Back to the run"
+            : needsAnotherRun
+              ? "Run for more data"
+              : count
+                ? "Try your improvements"
+                : "Back to run"}{" "}
+          →
+        </button>
+      </footer>
+    </section>
+  );
+}
+
 export function nodePosition(n: ResearchNode) {
   const radii =
     n.program === "global"
@@ -36,15 +302,7 @@ export function nodePosition(n: ResearchNode) {
     r = radii[n.tier];
   return { x: C + Math.cos(angle) * r, y: C + Math.sin(angle) * r, angle, r };
 }
-export default function Research({
-  game,
-  setGame,
-  onRun,
-}: {
-  game: Save;
-  setGame: React.Dispatch<React.SetStateAction<Save>>;
-  onRun: () => void;
-}) {
+export default function Research({ game, setGame, onRun }: ResearchProps) {
   const [shared, setShared] = useState(false),
     [selected, setSelected] = useState<string | null>(null),
     [zoom, setZoom] = useState(0.65),
@@ -53,8 +311,10 @@ export default function Research({
     drag = useRef<{ x: number; y: number; sx: number; sy: number } | null>(
       null,
     );
-  const tree = shared ? "global" : game.program,
+  const isShared = shared && sharedUnlocked(game);
+  const tree = isShared ? "global" : game.program,
     nodes = NODES.filter((n) => n.program === tree);
+  const introductory = beginnerResearch(game.program, game.researched);
   const known = (n: ResearchNode) =>
     showAll ||
     game.researched.includes(n.id) ||
@@ -62,7 +322,8 @@ export default function Research({
     [...n.requires, ...(n.anyOf ?? [])].some(
       (id) => game.researched.includes(id) || available(game, id),
     );
-  const detail = selected ? NODE_MAP.get(selected) : undefined;
+  const chosen = selected ? NODE_MAP.get(selected) : undefined;
+  const detail = chosen?.program === tree ? chosen : undefined;
   const ready = nodes.filter((n) => afford(game, n.id));
   const currentStats = stats(game);
   const recenter = (z: number) => {
@@ -79,7 +340,7 @@ export default function Research({
     const observer = new ResizeObserver(() => recenter(zoom));
     observer.observe(el);
     return () => observer.disconnect();
-  }, [zoom, tree]);
+  }, [zoom, tree, introductory]);
   const fit = () => {
     const v = viewport.current;
     if (v)
@@ -102,6 +363,8 @@ export default function Research({
   const nextProgram = (["projectile", "wheels"] as Program[]).find(
     (p) => !game.unlocked.includes(p) && programDiscovered(game, p),
   );
+  if (introductory)
+    return <FirstExperiments game={game} setGame={setGame} onRun={onRun} />;
   return (
     <div className="atlas-screen">
       <div className="atlas-heading">
@@ -111,7 +374,7 @@ export default function Research({
         </div>
         <div className="atlas-tabs">
           <button
-            className={!shared ? "active" : ""}
+            className={!isShared ? "active" : ""}
             onClick={() => {
               setShared(false);
               setSelected(null);
@@ -119,9 +382,9 @@ export default function Research({
           >
             {PROGRAMS[game.program].short}
           </button>
-          {totalTrials(game) >= 4 && (
+          {sharedUnlocked(game) && (
             <button
-              className={shared ? "active" : ""}
+              className={isShared ? "active" : ""}
               onClick={() => {
                 setShared(true);
                 setSelected(null);
@@ -303,7 +566,7 @@ export default function Research({
                     </small>
                   </div>
                 ))}
-                {nodes.map((n) => {
+                {nodes.filter(known).map((n) => {
                   const pos = nodePosition(n),
                     revealed = known(n),
                     owned = game.researched.includes(n.id),
@@ -387,10 +650,12 @@ export default function Research({
             <strong>
               {Math.floor(game.science).toLocaleString("en")} <small>RP</small>
             </strong>
-            <p>
-              {Math.floor(game.progress[game.program].funds)}{" "}
-              {PROGRAMS[game.program].currency}
-            </p>
+            {!isShared && (
+              <p>
+                {Math.floor(game.progress[game.program].funds)}{" "}
+                {PROGRAMS[game.program].currency}
+              </p>
+            )}
           </div>
           <div className="dossier-scroll">
             {detail ? (
@@ -410,7 +675,7 @@ export default function Research({
                     </li>
                   ))}
                   {detail.ability && (
-                    <li className="special-effect">✦ New mechanic</li>
+                    <li className="special-effect">✦ Unlocks a field skill</li>
                   )}
                   {Object.values(VARIANTS)
                     .flat()
@@ -421,6 +686,9 @@ export default function Research({
                       </li>
                     ))}
                 </ul>
+                {Object.keys(detail.effects).length === 1 && (
+                  <p className="stat-purpose">{STAT_PURPOSE[detail.stat]}</p>
+                )}
                 {detail.requires.length > 0 && (
                   <div className="atlas-requires">
                     <b>Needs all</b>
@@ -478,14 +746,18 @@ export default function Research({
                   !afford(game, detail.id) && (
                     <p className="shortfall">
                       Still need{" "}
-                      {Math.max(0, detail.cost - Math.floor(game.science))} RP
-                      and{" "}
-                      {Math.max(
-                        0,
-                        detail.localCost -
-                          Math.floor(game.progress[game.program].funds),
-                      )}{" "}
-                      {PROGRAMS[game.program].currency}.
+                      {[
+                        game.science < detail.cost
+                          ? `${Math.ceil(detail.cost - game.science)} RP`
+                          : "",
+                        detail.program !== "global" &&
+                        game.progress[detail.program].funds < detail.localCost
+                          ? `${Math.ceil(detail.localCost - game.progress[detail.program].funds)} ${PROGRAMS[detail.program].currency}`
+                          : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" and ")}
+                      .
                     </p>
                   )}
               </>
@@ -496,6 +768,10 @@ export default function Research({
                 <p>
                   The green nodes are affordable. Select one to see what it
                   changes.
+                </p>
+                <p className="atlas-reading-tip">
+                  Lines show what unlocks next. Choose either branch; paths join
+                  again at larger discoveries.
                 </p>
                 <div className="ready-discoveries">
                   {ready.map((n) => (

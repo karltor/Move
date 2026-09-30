@@ -1,6 +1,22 @@
 import { expect, it } from "vitest";
 import { createTerrain, routeSurface } from "./terrain";
 
+it("moves road cells forward without changing the width of a fixed piece of gravel", () => {
+  const t = createTerrain();
+  t.update(500);
+  const a = t.mesh.geometry.getAttribute("position");
+  const width = a.getZ(80 * 11 + 6),
+    x = a.getX(80 * 11 + 6) + t.mesh.position.x;
+  t.update(500.1);
+  expect(a.getZ(80 * 11 + 6)).toBe(width);
+  expect(a.getX(80 * 11 + 6) + t.mesh.position.x).toBeCloseTo(x - 0.065);
+  // Once the rolling mesh advances a complete cell, the same piece moves one row.
+  t.update(502);
+  expect(a.getZ(79 * 11 + 6)).toBeCloseTo(width);
+  t.mesh.geometry.dispose();
+  t.mesh.material.dispose();
+});
+
 it("replaces the city road with a narrower unmarked forest trail, then returns to a country road", () => {
   expect(routeSurface(0).markings).toBe(1);
   expect(routeSurface(500).markings).toBe(0);

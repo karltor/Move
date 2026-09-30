@@ -1,0 +1,319 @@
+/* Keep the field, decisions and the finish control on one desktop screen. */
+.run-app .mission-layout {
+  grid-template-columns: minmax(0, 1fr) 308px;
+}
+.run-app .mission-console {
+  padding: 18px;
+  gap: clamp(10px, 1.8vh, 18px);
+}
+.run-app .mission-console > * {
+  flex-shrink: 0;
+}
+.run-app .console-pace .eyebrow {
+  margin-bottom: 7px;
+}
+.run-app .pace-options button {
+  min-height: 46px;
+}
+.run-app .pace-options small {
+  font-size: 9px;
+}
+.run-app .pace-consequence {
+  font-size: 11px;
+  line-height: 1.5;
+  margin-top: 8px;
+  min-height: 33px;
+  color: #50635b;
+}
+.run-app .pace-consequence.push {
+  color: #964718;
+}
+.run-app .pace-consequence.recover {
+  color: #28686b;
+}
+.run-app .pace-options button:last-child.selected {
+  background: #fff1d9;
+  border-color: #ba7740;
+  color: #814018;
+}
+.run-app .pace-options button:first-child.selected {
+  background: #e4f4f1;
+  border-color: #558c85;
+  color: #235d59;
+}
+.field-instruments {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  right: 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 12px;
+  pointer-events: none;
+}
+.field-instruments > div {
+  padding: 14px 16px;
+  border: 1px solid #ffffff;
+  border-radius: 10px;
+  background: #fffffff0;
+  box-shadow: 0 3px 16px #263f4510;
+  color: #233b36;
+}
+.instrument-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  font-size: 10px;
+  margin-bottom: 7px;
+}
+.instrument-title > span {
+  font-size: 9px;
+  letter-spacing: 1px;
+  font-weight: 700;
+}
+.instrument-title > b {
+  white-space: nowrap;
+}
+.route-effort > strong {
+  font-size: 17px;
+  display: block;
+}
+.field-instruments small {
+  display: block;
+  font-size: 10px;
+  line-height: 1.45;
+  color: #4b6259;
+}
+.route-effort-track,
+.training-track {
+  height: 6px;
+  margin: 10px 0 7px;
+  border-radius: 6px;
+  background: #dfe8de;
+  overflow: hidden;
+}
+.route-effort-track i,
+.training-track i {
+  display: block;
+  height: 100%;
+  background: #417d65;
+  border-radius: inherit;
+  transition: width 0.12s linear;
+}
+.field-instruments .route-effort.effort {
+  border-color: #d9b479;
+  background: #fff9ecf5;
+}
+.route-effort.effort .route-effort-track {
+  background: #eee0c7;
+}
+.route-effort.effort .route-effort-track i {
+  background: #b27030;
+}
+.field-instruments .route-effort.recovery {
+  border-color: #8fbbaf;
+  background: #f1fcf7f5;
+}
+.training-values {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px;
+}
+.training-values > strong {
+  font-size: 23px;
+  line-height: 1.25;
+}
+.training-values strong span {
+  font-size: 12px;
+  font-weight: 500;
+  color: #536a61;
+}
+.training-values > b {
+  color: #41685b;
+  font-size: 10px;
+}
+.training-track {
+  height: 9px;
+  background: #d9e5ea;
+}
+.training-track i {
+  background: #40849a;
+}
+.training-instrument.level-up {
+  outline: 3px solid #c5a348;
+  background: #fffae9;
+}
+.training-instrument.level-up .instrument-title b {
+  color: #946416;
+}
+.effort-readout {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 3px 10px;
+  background: #f0f5ed;
+  border-radius: 7px;
+  padding: 9px 11px;
+}
+.effort-readout > span {
+  font-size: 11px;
+  color: #465e51;
+}
+.effort-readout > b {
+  font-size: 19px;
+  color: #355d43;
+}
+.effort-readout > small {
+  grid-column: 1/-1;
+  font-size: 10px;
+  line-height: 1.4;
+}
+.effort-readout.effort {
+  background: #fff4df;
+}
+.effort-readout.effort > b {
+  color: #995c27;
+}
+.run-app .mission-stage .camera-switch {
+  top: 90px;
+  right: 16px;
+  bottom: auto;
+}
+.run-app .mission-stage .orbit-hint {
+  top: 134px;
+  right: 16px;
+  bottom: auto;
+  left: auto;
+  font-size: 8px;
+}
+.run-app .mission-stage .field-find {
+  bottom: 156px;
+  left: 16px;
+}
+.run-app .mission-decision {
+  bottom: 157px;
+}
+.run-app .mission-stage:has(.mission-decision) .field-find {
+  bottom: 259px;
+}
+@media (max-height: 800px) and (min-width: 900px) {
+  .run-app main {
+    padding-top: 9px;
+    padding-bottom: 12px;
+  }
+  .run-app .mission-screen {
+    gap: 8px;
+  }
+  .run-app .mission-heading h1 {
+    font-size: 21px;
+  }
+  .run-app .mission-console {
+    gap: 9px;
+    padding: 14px;
+  }
+  .run-app .pending-rp strong {
+    font-size: 42px;
+  }
+  .run-app .finish-console > .primary {
+    margin-top: 5px;
+    min-height: 39px;
+  }
+  .run-app .ready-mark {
+    font-size: 15px;
+    padding: 6px 0;
+  }
+  .run-app .console-stamina b {
+    font-size: 18px;
+  }
+  .run-app .console-pace .eyebrow {
+    margin-bottom: 4px;
+  }
+  .run-app .pace-options button {
+    min-height: 40px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+  .run-app .pace-consequence {
+    margin-top: 5px;
+    font-size: 10px;
+    min-height: 28px;
+  }
+  .run-app .effort-readout {
+    padding: 6px 9px;
+  }
+  .run-app .console-options {
+    gap: 6px;
+  }
+  .run-app .console-bottom {
+    padding-top: 7px;
+  }
+  .field-instruments {
+    bottom: 12px;
+    left: 12px;
+    right: 12px;
+    gap: 9px;
+  }
+  .field-instruments > div {
+    padding: 10px 12px;
+  }
+  .route-effort > strong {
+    font-size: 15px;
+  }
+  .field-instruments small {
+    font-size: 9px;
+  }
+  .training-values > strong {
+    font-size: 20px;
+  }
+  .run-app .mission-decision {
+    bottom: 142px;
+  }
+  .run-app .mission-stage .field-find {
+    bottom: 142px;
+  }
+}
+@media (max-height: 650px) and (min-width: 900px) {
+  .run-app .mission-heading {
+    display: none;
+  }
+  .run-app .app-header {
+    height: 58px;
+  }
+  .run-app .mission-console {
+    gap: 7px;
+    padding: 11px 13px;
+  }
+  .run-app .pending-rp strong {
+    font-size: 34px;
+  }
+  .run-app .pending-rp > span {
+    font-size: 14px;
+  }
+  .run-app .finish-console > .primary {
+    margin-bottom: 4px;
+    min-height: 34px;
+    padding: 7px 10px;
+  }
+  .run-app .pace-options button {
+    min-height: 35px;
+  }
+  .run-app .console-bottom {
+    padding-top: 5px;
+  }
+  .run-app .vehicle-buttons button {
+    padding: 4px 6px;
+  }
+  .run-app .effort-readout small {
+    font-size: 9px;
+  }
+  .run-app .console-options .supply-button {
+    padding: 5px;
+    min-height: 28px;
+  }
+  .run-app .mission-distance strong {
+    font-size: 40px;
+  }
+}

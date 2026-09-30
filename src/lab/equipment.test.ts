@@ -9,6 +9,7 @@ import {
   equipGear,
   salvageGear,
   stats,
+  equipmentUnlocked,
 } from "./game";
 describe("equipment drops and progressive features", () => {
   it("starts with no supplies, equipment, or automation", () => {
@@ -50,14 +51,28 @@ describe("equipment drops and progressive features", () => {
     expect(rarityAt(100000, 0.4)).toBe("Uncommon");
   });
   it("drops equipment during a run and does not reroll after save/load", () => {
-    let s = start(fresh(), 12);
-    for (let i = 0; i < 110; i++) s = step(s, 0.5);
+    const base = fresh();
+    base.progress.runner.trials = 4;
+    base.progress.runner.bestDistance = 200;
+    expect(equipmentUnlocked(base)).toBe(true);
+    let s = start(base, 12);
+    for (let i = 0; i < 90; i++) s = step(s, 0.5);
     expect(s.inventory.length).toBeGreaterThan(0);
     const loaded = restore(JSON.stringify(s));
     expect(loaded.inventory).toEqual(s.inventory);
     expect(loaded.trial!.rng).toBe(s.trial!.rng);
     expect(loaded.trial!.nextDrop).toBe(s.trial!.nextDrop);
     expect(random(loaded.trial!.rng)).toEqual(random(s.trial!.rng));
+  });
+  it("never drops gear before the expedition milestone, even on a long recovery run", () => {
+    let s = start({ ...fresh(), pace: "recover" }, 12);
+    for (let i = 0; i < 220 && s.trial; i++) s = step(s, 0.5);
+    expect(s.inventory).toHaveLength(0);
+    const base = fresh();
+    base.progress.runner.trials = 4;
+    expect(equipmentUnlocked(base)).toBe(false);
+    base.progress.runner.bestDistance = 200;
+    expect(equipmentUnlocked(base)).toBe(true);
   });
   it("validates imports, keeps loadouts across refresh, and separates programs", () => {
     let s = fresh();

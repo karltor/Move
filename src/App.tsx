@@ -8,6 +8,7 @@ import {
   step,
   selectProgram,
   totalTrials,
+  equipmentUnlocked,
   type Save,
 } from "./lab/game";
 import Research from "./lab/ResearchPanel";
@@ -16,6 +17,8 @@ import Expedition from "./lab/Expedition";
 import Equipment from "./lab/EquipmentPanel";
 import "./App.css";
 import "./atlas.css";
+import "./lab/expedition-feedback.css";
+import "./lab/story-look.css";
 function read() {
   try {
     return restore(localStorage.getItem(SAVE_KEY));
@@ -103,7 +106,7 @@ export default function App() {
   const nav: [Tab, string][] = [
     ["field", "Run"],
     ...(experienced ? [["research", "Research"] as [Tab, string]] : []),
-    ...(game.inventory.length
+    ...(equipmentUnlocked(game) && game.inventory.length
       ? [["equipment", "Equipment"] as [Tab, string]]
       : []),
     ...(totalTrials(game) >= 3

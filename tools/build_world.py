@@ -105,70 +105,174 @@ def text(name,body,loc,size,mat,parent,rotation=(math.pi/2,0,0)):
     o=bpy.context.object;o.data.body=body;o.data.size=size;o.data.align_x='CENTER';o.data.extrude=.003
     bpy.ops.object.convert(target='MESH');return finish(o,name,mat,parent)
 
+def soft_loft(name, rings, mat, parent, n=32):
+    o=loft(name,rings,mat,parent,n)
+    modifier=o.modifiers.new('Soft tailored surface','SUBSURF');modifier.levels=1
+    bpy.context.view_layer.objects.active=o
+    bpy.ops.object.modifier_apply(modifier=modifier.name)
+    return o
+
+def path(name,points,radius,mat,parent):
+    curve=bpy.data.curves.new(name,'CURVE');curve.dimensions='3D'
+    curve.bevel_depth=radius;curve.bevel_resolution=3;curve.resolution_u=1
+    spline=curve.splines.new('POLY');spline.points.add(len(points)-1)
+    for p,co in zip(spline.points,points):p.co=(*co,1)
+    obj=bpy.data.objects.new(name,curve);scene.collection.objects.link(obj)
+    bpy.ops.object.select_all(action='DESELECT');obj.select_set(True)
+    bpy.context.view_layer.objects.active=obj;bpy.ops.object.convert(target='MESH')
+    return finish(bpy.context.object,name,mat,parent,True)
+
 def build_character():
     if any(o.name=='Scientist' for o in roots):raise RuntimeError('Scientist already built')
+    # Designed as a single friendly character, with articulation hidden in folds.
+    # All silhouette pieces remain parented to the game's existing joint names.
+    skin_face=material('warm face',(.66,.40,.255),.79)
+    lip=material('quiet smile',(.23,.095,.065),.95)
+    eye_white=material('eye ivory',(.91,.88,.77),.43)
+    iris=material('hazel iris',(.085,.12,.075),.48)
+    shoe_canvas=material('everyday canvas',(.27,.34,.36),.95)
+    gear_blue=material('equipment blue',(.055,.24,.44),.65)
+    gear_gold=material('equipment ochre',(.65,.36,.065),.65)
     s=group('Scientist')
-    loft('Trousers waist',[(.84,.13,.22,0),(.91,.18,.235,0),(1.03,.17,.22,0),(1.10,.14,.19,0)],navy,s)
+    soft_loft('Trouser waist',[(.85,.08,.15,0),(.88,.15,.205,0),(.99,.157,.205,0),(1.085,.12,.17,0)],navy,s)
     torso=group('Torso',s)
-    loft('Tailored field coat',[(.97,.19,.255,0),(1.02,.20,.27,0),(1.16,.17,.245,0),
-        (1.32,.17,.24,0),(1.49,.21,.28,-.015),(1.59,.19,.285,-.025),(1.65,.12,.19,-.015)],ivory,torso,32)
-    # Front opening, lapels, pocket, badge and brass buttons face +X.
-    box('Knit shirt',(.177,0,1.48),(.065,.22,.32),teal,torso,.035)
+    soft_loft('Field coat',[(.965,.18,.22,0),(.98,.19,.235,0),(1.02,.18,.23,0),(1.16,.143,.212,0),
+        (1.36,.16,.225,-.014),(1.48,.177,.25,-.019),(1.57,.16,.245,-.023),(1.625,.112,.17,-.017),(1.63,.085,.10,0)],ivory,torso)
+    # The split tails give the white laboratory coat its own silhouette while
+    # leaving the knees and the running stride visible.  The front remains open.
     for sign in [-1,1]:
-        mesh('Folded lapel',[(.225,sign*.04,1.35),(.21,sign*.035,1.63),(.18,sign*.17,1.62),(.228,sign*.12,1.45)],[(0,1,2,3)],ivory,torso)
-        box('Pocket',(.186,sign*.18,1.13),(.035,.12,.135),ivory,torso,.013)
-        box('Pocket welt',(.206,sign*.18,1.195),(.017,.125,.012),seam,torso,.004)
-    for z in [1.12,1.25,1.37]:ellipsoid('Button',(.21,.035,z),(.012,.013,.013),brass,torso,12,6)
-    box('ID clip',(.222,-.16,1.51),(.019,.084,.12),navy,torso,.006)
-    box('ID card',(.234,-.16,1.485),(.012,.073,.065),sole,torso,.004)
-    box('ID stripe',(.241,-.16,1.48),(.008,.05,.012),copper,torso,.002)
-    tube('Pen',(.232,-.24,1.34),(.232,-.24,1.44),.009,brass,torso,vertices=8)
-    ellipsoid('Neck',(0,0,1.69),(.09,.105,.15),skin,torso)
-    head=group('HeadRig',torso,(0,0,1.88))
-    loft('Face', [(-.19,.085,.115,.025),(-.15,.13,.16,.025),(-.07,.175,.18,.015),
-        (.03,.18,.185,0),(.14,.17,.175,-.015),(.21,.115,.13,-.03),(.23,.025,.035,-.03)],skin_light,head,32)
+        verts=[];faces=[];steps=20
+        for z,rx,ry,cx in [(.735,.244,.262,-.042),(.82,.225,.25,-.032),(.985,.186,.225,-.008),(1.065,.177,.214,0)]:
+            for j in range(steps+1):
+                a=sign*(.34+(math.pi-.38)*j/steps)
+                verts.append((cx+rx*math.cos(a),ry*math.sin(a),z+.012*math.sin(a*2)))
+        for k in range(3):
+            for j in range(steps):
+                a=k*(steps+1)+j;b=a+steps+1
+                faces.append((a,a+1,b+1,b) if sign>0 else (a,b,b+1,a+1))
+        tail=mesh('Split coat tail',verts,faces,ivory,torso)
+        for f in tail.data.polygons:f.use_smooth=True
+        path('Tail front piping',[(cx+rx*math.cos(sign*.34),ry*math.sin(sign*.34),z)
+             for z,rx,ry,cx in [(.735,.244,.262,-.042),(.82,.225,.25,-.032),(.985,.186,.225,-.008),(1.065,.177,.214,0)]],.004,seam,torso)
+    # A proper shirt opening with lapels lying against the chest, not a bib.
+    soft_loft('Shirt collar',[(1.48,.132,.13,.025),(1.58,.132,.135,.02),(1.66,.097,.108,0)],teal,torso,24)
     for sign in [-1,1]:
-        ellipsoid('Ear',(-.02,sign*.186,-.015),(.048,.026,.065),skin,head)
-        ellipsoid('Cheek',(.13,sign*.11,-.065),(.045,.055,.053),skin_light,head)
-        ellipsoid('Eyebrow',(.168,sign*.10,.105),(.024,.067,.018),hair,head)
-        box('Glasses rim',(.18,sign*.10,.046),(.045,.155,.106),navy,head,.025)
-        box('Glasses lens',(.205,sign*.10,.049),(.014,.127,.077),glass,head,.018)
-        box('Lens glint',(.215,sign*.115,.073),(.006,.06,.009),ivory,head,.004)
-        tube('Spectacle arm',(.18,sign*.178,.057),(-.08,sign*.183,.04),.009,navy,head,vertices=8)
-    tube('Glasses bridge',(.197,-.025,.047),(.197,.025,.047),.012,brass,head,vertices=10)
-    ellipsoid('Nose',(.209,0,-.028),(.072,.045,.046),skin_light,head)
-    tube('Wry smile',(.161,-.065,-.122),(.18,.023,-.127),.006,hair,head,vertices=8)
-    # Swept hair cap with discrete sculpted locks, not a helmet cube.
-    ellipsoid('Hair cap',(-.055,0,.145),(.16,.184,.112),hair,head)
-    for i in range(7):
-        o=ellipsoid('Swept lock',(.05-i*.024,-.13+i*.042,.207+math.sin(i*.45)*.014),(.115,.055,.047),hair,head)
-        o.rotation_euler.x=-.3;o.rotation_euler.y=-.2
-    for sign in [-1,1]:box('Sideburn',(-.075,sign*.165,.035),(.055,.025,.12),hair,head,.014)
-    for side,y in [('L',-.155),('R',.155)]:
+        mesh('Lapel',[(.168,sign*.015,1.39),(.187,sign*.04,1.54),(.133,sign*.082,1.63),(.166,sign*.143,1.575)],[(0,1,2,3)],ivory,torso)
+        box('Lower patch pocket',(.165,sign*.16,1.115),(.024,.095,.105),ivory,torso,.015)
+        tube('Pocket stitch',(.179,sign*.113,1.16),(.179,sign*.205,1.16),.003,seam,torso,vertices=8)
+    for z in [1.075,1.205,1.335]:ellipsoid('Coat button',(.183,.019,z),(.007,.009,.009),seam,torso,12,8)
+    box('Chest pocket',(.167,-.145,1.405),(.021,.083,.092),ivory,torso,.008)
+    tube('Pocket pen',(.18,-.13,1.435),(.18,-.13,1.50),.006,teal,torso,vertices=8)
+    box('Name badge',(.184,.14,1.46),(.015,.084,.045),navy,torso,.006)
+    box('Badge paper',(.193,.14,1.46),(.005,.066,.031),sole,torso,.003)
+    tube('Badge line',(.199,.12,1.46),(.199,.16,1.46),.003,teal,torso,vertices=8)
+    soft_loft('Neck',[(1.59,.065,.075,0),(1.65,.079,.086,0),(1.745,.075,.083,-.005)],skin_face,torso,24)
+    head=group('HeadRig',torso,(0,0,1.862))
+    # Continuous cheekbones, brow and jaw are sculpted into one smooth surface.
+    face=soft_loft('Sculpted face',[(-.178,.047,.076,.041),(-.165,.105,.113,.023),(-.118,.145,.148,.004),
+        (-.065,.169,.164,-.012),(.015,.181,.176,-.019),(.095,.18,.175,-.023),
+        (.175,.166,.162,-.03),(.221,.12,.125,-.035),(.244,.025,.035,-.038)],skin_face,head,40)
+    # A small integrated nose bridge, with a soft tip instead of a protruding ball.
+    soft_loft('Nose bridge',[(-.053,.012,.025,.169),(-.038,.025,.030,.18),(-.011,.032,.025,.185),(.029,.018,.018,.177),(.067,.007,.013,.17)],skin_face,head,24)
+    for sign in [-1,1]:
+        ellipsoid('Ear',(-.022,sign*.172,-.027),(.043,.025,.057),skin_face,head)
+        ellipsoid('Ear fold',(-.006,sign*.19,-.025),(.018,.007,.029),skin,head,16,10)
+        # White eyes and iris remain visible. Thin open spectacle frames never
+        # replace the expression with the old opaque sunglasses rectangles.
+        ellipsoid('Eye white',(.159,sign*.081,.036),(.022,.049,.036),eye_white,head)
+        ellipsoid('Iris',(.180,sign*.079,.034),(.007,.018,.023),iris,head,20,12)
+        ellipsoid('Pupil',(.186,sign*.078,.034),(.004,.009,.014),hair,head,16,10)
+        ellipsoid('Eye light',(.190,sign*.073,.043),(.003,.004,.006),eye_white,head,12,8)
+        path('Eyebrow',[(.15,sign*.044,.102),(.16,sign*.077,.114),(.145,sign*.119,.105)],.008,hair,head)
+        points=[]
+        for j in range(33):
+            a=j*math.tau/32
+            points.append((.188,sign*.082+math.cos(a)*.061,.035+math.sin(a)*.049))
+        path('Fine spectacle rim',points,.006,navy,head)
+        path('Spectacle arm',[(.188,sign*.142,.045),(.08,sign*.181,.046),(-.065,sign*.18,.036)],.005,navy,head)
+    path('Spectacle bridge',[(.19,-.023,.043),(.20,0,.055),(.19,.023,.043)],.005,brass,head)
+    path('Half smile',[(.158,-.061,-.102),(.175,-.035,-.111),(.183,0,-.114),(.175,.032,-.108),(.162,.051,-.096)],.0035,lip,head)
+    # One swept hair silhouette, with a sculpted hairline rather than bead locks.
+    verts=[];faces=[];n=48;rows=10
+    for k in range(rows):
+        f=k/(rows-1)
+        for j in range(n):
+            a=j*math.tau/n
+            hairline=.078+.065*max(0,math.cos(a))+.024*math.sin(a)
+            phi=(1-f)*math.acos((hairline-.12)/.153)
+            # Slightly outside the scalp, with the quiff sculpted into the cap.
+            lift=.026*max(0,math.cos(a+.35))*math.sin(phi)**2
+            verts.append((-.030+.192*math.sin(phi)*math.cos(a),.192*math.sin(phi)*math.sin(a),.12+.157*math.cos(phi)+lift))
+    for k in range(rows-1):
+        for j in range(n):
+            a=k*n+j;b=k*n+(j+1)%n;faces.append((a,b,b+n,a+n))
+    cap=mesh('Swept hair',verts,faces,hair,head)
+    for f in cap.data.polygons:f.use_smooth=True
+    # A single lifted quiff breaks the old helmet outline.  Its broad root
+    # grows out of the cap, twists across the forehead, then narrows to a tip.
+    quiff=[];quiff_faces=[];slices=12;ring=14
+    for i in range(slices):
+        t=i/(slices-1)
+        x=-.13+.35*t
+        y=-.09+.10*t
+        z=.247+.04*math.sin(math.pi*t)-.024*t
+        width=(.11*(1-t)**1.2+.004)
+        height=(.016*(1-t)+.002)
+        for j in range(ring):
+            a=j*math.tau/ring
+            quiff.append((x,y+width*math.cos(a),z+height*math.sin(a)))
+    for i in range(slices-1):
+        for j in range(ring):
+            a=i*ring+j;b=i*ring+(j+1)%ring
+            quiff_faces.append((a,b,b+ring,a+ring))
+    quiff_faces.extend([tuple(reversed(range(ring))),tuple((slices-1)*ring+j for j in range(ring))])
+    quiff_obj=mesh('Swept quiff',quiff,quiff_faces,hair,head)
+    for f in quiff_obj.data.polygons:f.use_smooth=True
+    for sign in [-1,1]:
+        box('Short sideburn',(-.037,sign*.161,.026),(.032,.013,.072),hair,head,.006)
+    for side,y in [('L',-.135),('R',.135)]:
         leg=group('Leg'+side,s,(0,y,.95))
-        loft('Trouser thigh'+side,[(-.46,.091,.096,0),(-.39,.10,.11,0),(-.23,.124,.128,-.015),(-.08,.133,.13,-.01),(.045,.10,.11,0)],navy,leg)
+        soft_loft('Trouser thigh'+side,[(-.47,.06,.065,0),(-.435,.081,.082,0),(-.34,.092,.095,-.01),(-.17,.107,.11,-.017),(-.025,.102,.11,0),(.035,.07,.08,0)],navy,leg)
         knee=group('Knee'+side,leg,(0,0,-.43))
-        ellipsoid('Knee fabric'+side,(0,0,0),(.096,.098,.10),navy,knee)
-        loft('Trouser calf'+side,[(-.41,.068,.079,0),(-.35,.079,.083,-.014),(-.18,.10,.105,-.025),(-.06,.091,.096,0),(.025,.087,.091,0)],navy,knee)
+        soft_loft('Trouser calf'+side,[(-.42,.055,.059,0),(-.385,.065,.073,0),(-.29,.074,.077,-.018),(-.16,.079,.083,-.021),(-.025,.078,.082,0),(.044,.060,.066,0)],navy,knee)
         foot=group('Foot'+side,knee,(0,0,-.43))
-        box('Foam midsole'+side,(.075,0,-.059),(.365,.213,.058),sole,foot,.028)
-        box('Rubber outsole'+side,(.075,0,-.085),(.37,.216,.022),rubber,foot,.01)
-        ellipsoid('Running shoe'+side,(.065,0,.005),(.178,.10,.075),copper,foot)
-        ellipsoid('Heel collar'+side,(-.053,0,.038),(.073,.089,.077),teal,foot)
-        for x in [.02,.055,.09]:tube('Laces',(x,-.06,.06),(x+.012,.06,.06),.006,sole,foot,vertices=8)
-        for sign in [-1,1]:tube('Shoe flash',(-.02,sign*.099,.015),(.10,sign*.085,.033),.012,ivory,foot,vertices=8)
-        arm=group('Arm'+side,torso,(-.02,y*2,1.57))
-        ellipsoid('Shoulder sleeve'+side,(0,0,-.025),(.126,.122,.14),ivory,arm)
-        loft('Coat upper sleeve'+side,[(-.36,.083,.087,0),(-.29,.087,.09,0),(-.13,.112,.108,-.005),(.025,.11,.115,0)],ivory,arm)
+        plain=group('EverydayShoe'+side,foot)
+        equipped=group('GearShoe'+side,foot)
+        for shoe,mat in [(plain,shoe_canvas),(equipped,gear_blue)]:
+            box('Flexible sole',(.068,0,-.058),(.317,.178,.055),sole,shoe,.025)
+            box('Tread',(.068,0,-.081),(.322,.181,.020),rubber,shoe,.009)
+            ellipsoid('Canvas upper',(.058,0,.002),(.153,.086,.066),mat,shoe,24,12)
+            ellipsoid('Ankle collar',(-.04,0,.030),(.068,.075,.062),mat,shoe)
+            for x in [.015,.043,.069]:tube('Laces',(x,-.046,.051),(x+.009,.046,.051),.0035,ivory,shoe,vertices=8)
+        for sign in [-1,1]:
+            path('Shoe side stripe',[(-.035,sign*.087,.006),(.055,sign*.087,.023),(.12,sign*.075,.007)],.009,ivory,equipped)
+        box('Heel support',(-.087,0,.024),(.023,.145,.073),gear_gold,equipped,.009)
+        arm=group('Arm'+side,torso,(-.025,y*1.99,1.545))
+        soft_loft('Coat sleeve'+side,[(-.375,.055,.062,0),(-.327,.071,.075,0),(-.22,.079,.081,0),(-.11,.093,.093,-.006),(-.025,.104,.101,-.007),(.041,.067,.07,0)],ivory,arm)
         elbow=group('Elbow'+side,arm,(0,0,-.34))
-        ellipsoid('Elbow sleeve'+side,(0,0,0),(.083,.087,.088),ivory,elbow)
-        loft('Rolled sleeve'+side,[(-.22,.068,.075,0),(-.16,.075,.08,0),(-.07,.083,.085,0),(.02,.08,.083,0)],ivory,elbow)
-        box('Cuff fold'+side,(0,0,-.215),(.146,.16,.047),seam,elbow,.018)
-        ellipsoid('Hand'+side,(0,0,-.295),(.077,.07,.10),skin_light,elbow)
-        ellipsoid('Thumb'+side,(.047,-.04 if side=='L' else .04,-.272),(.041,.037,.063),skin,elbow)
+        soft_loft('Sleeve forearm'+side,[(-.235,.057,.062,0),(-.21,.063,.069,0),(-.17,.066,.071,0),(-.06,.072,.075,0),(.035,.066,.07,0)],ivory,elbow)
+        soft_loft('Rolled cuff'+side,[(-.238,.059,.064,0),(-.231,.070,.073,0),(-.193,.070,.073,0),(-.188,.061,.066,0)],seam,elbow,24)
+        ellipsoid('Hand'+side,(.005,0,-.291),(.060,.05,.080),skin_face,elbow)
+        ellipsoid('Thumb'+side,(.044,-.027 if side=='L' else .027,-.279),(.024,.026,.048),skin_face,elbow,20,12)
+        # No instrument appears until this slot is actually equipped.
         if side=='L':
-            box('Watch strap',(0,-.081,-.22),(.10,.016,.065),navy,elbow,.012)
-            box('Watch face',(0,-.095,-.22),(.065,.019,.052),glass,elbow,.01)
+            watch=group('GearInstrument',elbow)
+            box('Wrist strap',(0,-.073,-.205),(.084,.016,.06),navy,watch,.013)
+            box('Wrist instrument',(0,-.084,-.205),(.065,.025,.055),gear_blue,watch,.012)
+            box('Instrument display',(.001,-.1,-.204),(.043,.009,.033),eye_white,watch,.005)
+            path('Display tick',[(-.013,-.106,-.210),(0,-.106,-.210),(0,-.106,-.194)],.002,teal,watch)
+            antenna=group('GearAntenna',watch)
+            tube('Sensor aerial',(.021,-.081,-.184),(.021,-.081,-.12),.004,brass,antenna,vertices=8)
+    vest=group('GearOutfit',torso)
+    # Light waistcoat worn over the laboratory coat; adds actual silhouette.
+    for sign in [-1,1]:
+        mesh('Field vest front',[(.21,sign*.025,1.22),(.185,sign*.19,1.23),(.19,sign*.2,1.50),(.12,sign*.125,1.60),(.197,sign*.043,1.46)],[(0,1,2,3,4)],gear_blue,vest)
+        tube('Vest shoulder',(.12,sign*.125,1.60),(-.145,sign*.15,1.57),.039,gear_blue,vest,vertices=12)
+        box('Vest pocket',(.211,sign*.137,1.32),(.021,.085,.075),gear_blue,vest,.01)
+        tube('Pocket trim',(.225,sign*.096,1.35),(.225,sign*.176,1.35),.005,gear_gold,vest,vertices=8)
+    pack=group('GearPack',vest)
+    box('Telemetry pack',(-.21,0,1.38),(.14,.24,.26),gear_blue,pack,.04)
+    box('Pack plate',(-.288,0,1.4),(.022,.16,.12),navy,pack,.02)
     print('Character built',len(s.children_recursive),'parts')
 
 def window(parent,x,z,width=.7,height=1,shutters=False):

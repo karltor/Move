@@ -1,0 +1,341 @@
+.first-experiments {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 1680px;
+  margin: 0 auto;
+}
+.experiments-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+  flex-shrink: 0;
+}
+.experiments-heading h1 {
+  font-size: clamp(23px, 2.2vw, 34px);
+}
+.experiments-heading > div > p {
+  margin-top: 5px;
+  color: #526773;
+  font-size: 14px;
+}
+.experiment-budget {
+  min-width: 195px;
+  text-align: right;
+  padding-left: 24px;
+  border-left: 1px solid #cbd8da;
+}
+.experiment-budget > span {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  color: #49665c;
+}
+.experiment-budget strong {
+  font:
+    800 36px/1.3 Manrope,
+    sans-serif;
+  color: #244d40;
+}
+.experiment-budget strong small {
+  font:
+    700 15px Manrope,
+    sans-serif;
+}
+.experiment-budget p {
+  font-size: 12px;
+  margin-top: 2px;
+  color: #526773;
+}
+.experiment-context {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px 24px;
+  border-block: 1px solid #d5dfe1;
+  padding: 10px 0;
+  flex-shrink: 0;
+  font-size: 12px;
+}
+.experiment-context > p {
+  display: flex;
+  gap: 16px;
+}
+.experiment-context > p > span {
+  color: #526773;
+}
+.experiment-chapters {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.experiment-chapters i {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid #bfcdd0;
+  border-radius: 50%;
+  font:
+    600 10px Manrope,
+    sans-serif;
+  background: #fff;
+  color: #60717a;
+}
+.experiment-chapters i.done {
+  color: white;
+  background: #39745f;
+  border-color: #39745f;
+}
+.experiment-chapters > span {
+  margin-left: 6px;
+  color: #526773;
+  font-size: 11px;
+}
+.experiment-choices {
+  display: grid;
+  gap: 20px;
+  flex: 1;
+  min-height: 0;
+}
+.experiment-option {
+  --experiment-color: #386d5f;
+  --experiment-wash: #e4eee7;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  position: relative;
+  padding: clamp(16px, 1.8vw, 30px);
+  border: 1px solid #cdd9db;
+  border-top: 3px solid var(--experiment-color);
+  border-radius: 4px 4px 15px 15px;
+  background: #fff;
+  overflow: auto;
+}
+.experiment-option.affordable {
+  border-color: #90b6a7;
+  box-shadow: 0 4px 16px #244d4009;
+}
+.experiment-lane-1 {
+  --experiment-color: #426b88;
+  --experiment-wash: #e6eef4;
+}
+.experiment-lane-2 {
+  --experiment-color: #9c652b;
+  --experiment-wash: #f4ead9;
+}
+.experiment-option-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  letter-spacing: 0.4px;
+}
+.experiment-option-top > span {
+  font-weight: 700;
+  color: var(--experiment-color);
+  text-transform: uppercase;
+}
+.experiment-option-top b {
+  padding: 4px 7px;
+  border-radius: 4px;
+  font-size: 10px;
+  letter-spacing: 0;
+}
+.experiment-option-top .can-afford {
+  color: #245640;
+  background: #e4f2e9;
+}
+.experiment-option-top .needs-data {
+  color: #617078;
+  background: #f0f3f4;
+}
+.experiment-illustration {
+  width: clamp(48px, 8vh, 88px);
+  height: clamp(48px, 8vh, 88px);
+  display: grid;
+  place-items: center;
+  background: var(--experiment-wash);
+  border-radius: 22% 48% 28% 38%;
+  color: var(--experiment-color);
+  margin-block: clamp(8px, 2vh, 22px);
+  transform: rotate(-4deg);
+}
+.experiment-illustration svg {
+  width: 62%;
+  height: 62%;
+  transform: rotate(4deg);
+}
+.experiment-option h2 {
+  font-size: clamp(19px, 1.8vw, 27px);
+}
+.experiment-description {
+  margin-top: 8px;
+  color: #526773;
+  font-size: 13px;
+  line-height: 1.55;
+  max-width: 52ch;
+}
+.experiment-outcome {
+  margin-block: auto 18px;
+  padding-top: 16px;
+}
+.experiment-effects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  align-items: baseline;
+}
+.experiment-effects strong {
+  color: var(--experiment-color);
+  font:
+    800 clamp(17px, 1.6vw, 23px) Manrope,
+    sans-serif;
+  display: block;
+}
+.experiment-effects span {
+  color: var(--experiment-color);
+  font:
+    700 13px Manrope,
+    sans-serif;
+}
+.experiment-outcome > span {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #526773;
+}
+.experiment-outcome > span i {
+  font-style: normal;
+  margin-inline: 8px;
+}
+.experiment-outcome > span b {
+  color: #243340;
+}
+.experiment-outcome > p {
+  color: #526773;
+  margin-top: 7px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.experiment-outcome .experiment-skill {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  color: #49665c;
+}
+.experiment-purchase {
+  border-top: 1px solid #e1e8e9;
+  padding-top: 14px;
+}
+.experiment-purchase > div {
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+.experiment-purchase small {
+  float: right;
+  color: #526773;
+  font-size: 10px;
+  padding-top: 3px;
+}
+.experiment-purchase > button {
+  width: 100%;
+  min-height: 39px;
+  font-size: 12px;
+}
+.experiment-purchase > button:disabled {
+  background: #edf1f3;
+  color: #596b77;
+  border-color: #d9e1e5;
+  opacity: 1;
+}
+.experiment-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  flex-shrink: 0;
+  padding: 3px 0;
+}
+.experiment-footer b {
+  font-size: 12px;
+  color: #294c40;
+}
+.experiment-footer p {
+  font-size: 12px;
+  margin-top: 3px;
+  color: #526773;
+}
+.experiment-footer small {
+  display: block;
+  margin-top: 5px;
+  color: #526773;
+  font-size: 11px;
+}
+.experiment-footer > button {
+  flex-shrink: 0;
+  min-width: 220px;
+}
+.stat-purpose,
+.atlas-reading-tip {
+  border-left: 2px solid #aac7bb;
+  padding-left: 10px;
+}
+/* Keep the experiment and its purchase visible on shorter desktop windows. */
+@media (max-height: 760px) {
+  .first-experiments {
+    gap: 10px;
+  }
+  .experiments-heading h1 {
+    font-size: 23px;
+  }
+  .experiments-heading > div > p {
+    font-size: 12px;
+  }
+  .experiment-budget strong {
+    font-size: 29px;
+  }
+  .experiment-context {
+    padding-block: 7px;
+  }
+  .experiment-option {
+    padding: 14px 20px;
+  }
+  .experiment-illustration {
+    position: absolute;
+    top: 40px;
+    right: 20px;
+    width: 43px;
+    height: 43px;
+    margin: 0;
+  }
+  .experiment-option h2 {
+    font-size: 20px;
+    margin-top: 16px;
+    padding-right: 52px;
+  }
+  .experiment-description {
+    font-size: 12px;
+    line-height: 1.45;
+    padding-right: 45px;
+  }
+  .experiment-outcome {
+    margin-bottom: 10px;
+    padding-top: 10px;
+  }
+  .experiment-effects strong {
+    font-size: 18px;
+  }
+  .experiment-purchase {
+    padding-top: 10px;
+  }
+  .experiment-purchase > div {
+    margin-bottom: 7px;
+  }
+}

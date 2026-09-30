@@ -1,4 +1,5 @@
 import { solveLeg } from "./animation";
+import { characterEquipment } from "./characterVisuals";
 import { createTerrain, routeSurface } from "./terrain";
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
@@ -55,7 +56,7 @@ export default function World({
     scene.background = new THREE.Color("#c0cdd2");
     scene.fog = new THREE.Fog("#c0cdd2", 28, 85);
     const camera = new THREE.PerspectiveCamera(43, 1, 0.1, 150);
-    camera.position.set(5.8, 3.5, 8.8);
+    camera.position.set(4.4, 2.9, 6.5);
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.target.set(1, 1.15, 0);
     controls.enableDamping = true;
@@ -97,6 +98,7 @@ export default function World({
       vehicle: THREE.Object3D | undefined,
       projectile: THREE.Object3D | undefined,
       active = "",
+      wornKey = "",
       lastView = false;
     const parts = new Map<string, THREE.Object3D>();
     const assets = new Map<string, THREE.Group>();
@@ -369,6 +371,19 @@ export default function World({
         projectile = undefined;
         if (scientist) {
           scene.add(scientist);
+          wornKey = "";
+          scientist.traverse((o) => {
+            if (!(o instanceof THREE.Mesh)) return;
+            const list = Array.isArray(o.material) ? o.material : [o.material];
+            const copies = list.map((m) => {
+              // Gear color changes must not recolor scenery or future clones.
+              if (!m.name.includes("equipment blue")) return m;
+              const copy = m.clone();
+              materials.add(copy);
+              return copy;
+            });
+            o.material = Array.isArray(o.material) ? copies : copies[0];
+          });
           for (const name of [
             "LegL",
             "LegR",
@@ -423,10 +438,30 @@ export default function World({
         active = key;
       }
       const moving = !!t && renderSpeed > 0.15;
-      const stride = s.pace === "recover" ? 0.25 : 0.38;
+      // Keep the planted ankle within the two 43 cm leg segments.  The old
+      // 38 cm reach forced a deep crouch even at a gentle first-run speed.
+      const stride = s.pace === "recover" ? 0.16 : 0.21;
       gait +=
         dt * Math.min(2.8, (renderSpeed * 0.65) / (4 * stride)) * Math.PI * 2;
       if (scientist) {
+        const worn = characterEquipment(s);
+        if (worn.key !== wornKey) {
+          wornKey = worn.key;
+          for (const [name, visible] of Object.entries(worn.visible)) {
+            const object = scientist.getObjectByName(name);
+            if (object) object.visible = visible;
+          }
+          for (const [name, color] of [
+            ["GearShoeL", worn.colors.footwear],
+            ["GearShoeR", worn.colors.footwear],
+            ["GearOutfit", worn.colors.outfit],
+            ["GearInstrument", worn.colors.instrument],
+          ]) scientist.getObjectByName(name)?.traverse((o) => {
+            if (!(o instanceof THREE.Mesh)) return;
+            for (const m of Array.isArray(o.material) ? o.material : [o.material])
+              if (m instanceof THREE.MeshStandardMaterial && m.name.includes("equipment blue")) m.color.set(color);
+          });
+        }
         scientist.position.set(s.program === "projectile" ? -2 : 0, 0.012, 0);
         scientist.visible =
           s.program !== "wheels" ||
@@ -435,9 +470,9 @@ export default function World({
         const running = s.program === "runner" && moving;
         const walk = s.pace === "recover";
         const bob = running
-          ? 0.018 * Math.cos(gait * 2)
+          ? 0.008 * Math.cos(gait * 2)
           : Math.sin(renderTime * 2) * 0.003;
-        const hipHeight = (running ? 0.83 : 0.95) + bob;
+        const hipHeight = (running ? 0.915 : 0.95) + bob;
         scientist.position.y = 0.012 + hipHeight - 0.95;
         const torso = parts.get("Torso"),
           head = parts.get("HeadRig");
@@ -465,7 +500,7 @@ export default function World({
             : 0;
           const footY =
             running && !stance
-              ? Math.sin((phase01 - 1) * Math.PI) * (walk ? 0.13 : 0.3)
+              ? Math.sin((phase01 - 1) * Math.PI) * (walk ? 0.11 : 0.2)
               : 0;
           const dy = hipHeight - 0.09 - footY;
           const pose = solveLeg(footX, dy);
@@ -508,9 +543,9 @@ export default function World({
       if (view.current !== lastView) {
         lastView = view.current;
         camera.position.set(
-          lastView ? 3.6 : 5.8,
-          lastView ? 2.1 : 3.5,
-          lastView ? 4.3 : 8.8,
+          lastView ? 3.6 : 4.4,
+          lastView ? 2.1 : 2.9,
+          lastView ? 4.3 : 6.5,
         );
         controls.target.set(lastView ? 0.3 : 1, 1.15, 0);
       }

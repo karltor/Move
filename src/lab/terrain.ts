@@ -47,12 +47,30 @@ export function createTerrain() {
   geometry.setAttribute("surface", new THREE.BufferAttribute(surface, 1));
   geometry.setIndex(indices);
   const travel = { value: 0 };
+  // A repeating mipmapped texture stays stable in motion and at oblique angles.
+  // Unfiltered, per-fragment hashes previously produced crawling/moiré on gravel.
+  const pixels = new Uint8Array(256 * 256 * 4);
+  let seed = 7719;
+  for (let i = 0; i < 256 * 256; i++) {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    const value = 150 + (seed % 80);
+    pixels.set([value, value, value, 255], i * 4);
+  }
+  const grainTexture = new THREE.DataTexture(pixels, 256, 256);
+  grainTexture.wrapS = grainTexture.wrapT = THREE.RepeatWrapping;
+  grainTexture.magFilter = THREE.LinearFilter;
+  grainTexture.minFilter = THREE.LinearMipmapLinearFilter;
+  grainTexture.generateMipmaps = true;
+  grainTexture.anisotropy = 8;
+  grainTexture.needsUpdate = true;
   const material = new THREE.MeshStandardMaterial({
     vertexColors: true,
     roughness: 0.96,
   });
+  material.addEventListener("dispose", () => grainTexture.dispose());
   material.onBeforeCompile = (shader) => {
     shader.uniforms.routeTravel = travel;
+    shader.uniforms.routeGrain = { value: grainTexture };
     shader.vertexShader =
       `attribute float surface; varying float vSurface; varying vec2 vGround; uniform float routeTravel;\n` +
       shader.vertexShader;
@@ -62,8 +80,7 @@ export function createTerrain() {
       vSurface = surface; vGround = vec2(position.x + routeTravel, position.z);`,
     );
     shader.fragmentShader =
-      `varying float vSurface; varying vec2 vGround;
-      float grit(vec2 p) {return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+      `varying float vSurface; varying vec2 vGround; uniform sampler2D routeGrain;
       \n` + shader.fragmentShader;
     shader.fragmentShader = shader.fragmentShader.replace(
       "#include <color_fragment>",
@@ -71,12 +88,10 @@ export function createTerrain() {
       float gravel = 1.0 - smoothstep(0.1,0.6,abs(vSurface-1.0));
       float grass = smoothstep(1.5,1.95,vSurface) * (1.0-smoothstep(2.1,2.5,vSurface));
       float paving = smoothstep(2.5,2.95,vSurface);
-      vec2 cell = vGround * 34.0;
-      float stone = grit(floor(cell));
-      float fleck = 1.0-smoothstep(.16,.45,length(fract(cell)-.5));
-      float fine = grit(floor(vGround * 210.0));
-      float grain = mix(.91+fine*.16, .73+stone*.35+fleck*.18, gravel);
-      grain = mix(grain,.84+grit(floor(vGround*55.0))*.26,grass);
+      float fine = texture2D(routeGrain,vGround*.22).r;
+      float coarse = texture2D(routeGrain,vGround*.027).r;
+      float grain = mix(.91+fine*.12, .65+fine*.42+coarse*.12, gravel);
+      grain = mix(grain,.80+coarse*.26,grass);
       vec2 slabs = abs(fract(vGround*vec2(1.3,1.8))-.5);
       float joint = max(smoothstep(.475,.49,slabs.x),smoothstep(.475,.49,slabs.y));
       grain *= 1.0-paving*joint*.20;
@@ -93,14 +108,17 @@ export function createTerrain() {
     grass = new THREE.Color(),
     road = new THREE.Color(),
     c = new THREE.Color();
-  let lastDistance = -Infinity;
+  let lastOrigin = -Infinity;
   function update(distance: number) {
-    travel.value = distance * 0.65;
-    if (Math.abs(distance - lastDistance) < 0.25) return;
-    lastDistance = distance;
+    // Translate complete route cells. Their edges never morph sideways between frames.
+    const origin = Math.floor(distance * 0.65);
+    mesh.position.x = origin - distance * 0.65;
+    travel.value = origin;
+    if (origin === lastOrigin) return;
+    lastOrigin = origin;
     for (let i = 0; i < rows; i++) {
       const x = i - 80,
-        actual = distance + x / 0.65;
+        actual = (origin + x) / 0.65;
       const s = routeSurface(actual);
       grass
         .set(BIOMES[s.b.from].color)

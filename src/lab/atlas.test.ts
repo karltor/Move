@@ -20,7 +20,8 @@ import { nodePosition } from "./ResearchPanel";
 describe("field report and new discoveries", () => {
   it("banks exactly the displayed extra rewards, without adding paid milestones twice", () => {
     let s = start(fresh());
-    for (let i = 0; i < 230; i++) s = step(s, 0.5);
+    for (let i = 0; i < 40; i++) s = step(s, 0.5);
+    expect(s.trial).not.toBeNull();
     const reward = pendingRewards(s),
       done = finish(s);
     expect(done.science - s.science).toBe(reward.science);
@@ -28,15 +29,19 @@ describe("field report and new discoveries", () => {
       reward.funds,
     );
     expect(done.progress.runner.xp - s.progress.runner.xp).toBe(reward.xp);
+    expect(reward.xp).toBe(0);
+    expect(done.history[0].xp).toBe(s.trial!.lastXP);
     expect(done.history[0].science).toBe(reward.science);
     expect(pendingRewards(done).science).toBe(0);
     expect(finish(done)).toBe(done);
   });
-  it("makes shoes improve both speed and energy economy", () => {
+  it("makes the first shoes improve speed without introducing another stat", () => {
     const ordinary = step(start(fresh()), 0.5),
       shoes = step(start({ ...fresh(), researched: ["runner-2-0"] }), 0.5);
     expect(shoes.trial!.speed).toBeGreaterThan(ordinary.trial!.speed);
-    expect(shoes.trial!.energy).toBeGreaterThan(ordinary.trial!.energy);
+    expect(shoes.trial!.energy).toBe(ordinary.trial!.energy);
+    expect(stats(shoes).speed).toBeCloseTo(1.15);
+    expect(stats(shoes).economy).toBe(1);
   });
   it("makes wind, recovery, acceleration and fatigue resistance affect the simulation", () => {
     const base = start(fresh());
@@ -49,7 +54,7 @@ describe("field report and new discoveries", () => {
     expect(accel.trial!.speed).toBeGreaterThan(normal.trial!.speed);
     expect(resist.trial!.fatigue).toBeLessThan(normal.trial!.fatigue);
     expect(
-      step({ ...base, pace: "recover", researched: ["runner-2-2"] }, 0.5).trial!
+      step({ ...base, pace: "recover", researched: ["runner-0-3"] }, 0.5).trial!
         .energy,
     ).toBeGreaterThan(step({ ...base, pace: "recover" }, 0.5).trial!.energy);
   });

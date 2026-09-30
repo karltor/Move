@@ -10,20 +10,20 @@ export const RUNNER: Discovery[][] = [
   [
     [
       "Warm-up ritual",
-      "Convince the muscles this is a scientific expedition, not a fire drill.",
-      { stamina: 0.16, acceleration: 0.12 },
+      "Start with a proper warm-up. A bigger energy reserve helps Ellis reach the end of the street.",
+      { stamina: 0.25 },
       "heart",
     ],
     [
       "Diaphragm breathing",
       "Less panic per breath. More road per lungful.",
-      { economy: 0.18, recovery: 0.12 },
+      { economy: 0.12 },
       "lungs",
     ],
     [
       "Salt & water",
       "Keep the electrical system inside the scientist conducting.",
-      { stamina: 0.22, resilience: 0.14 },
+      { stamina: 0.22 },
       "drop",
     ],
     [
@@ -62,8 +62,8 @@ export const RUNNER: Discovery[][] = [
   [
     [
       "Cadence metronome",
-      "A pocket-sized drummer that never requests a break.",
-      { acceleration: 0.28, economy: 0.08 },
+      "A steadier rhythm gets Ellis back up to speed after bends and rough patches.",
+      { acceleration: 0.28 },
       "wave",
     ],
     [
@@ -73,11 +73,11 @@ export const RUNNER: Discovery[][] = [
       "foot",
     ],
     [
-      "Hill technique",
-      "Short steps, high knees. Alpine terrain loses half its extra stamina penalty.",
-      { acceleration: 0.18, resilience: 0.16 },
+      "Trail-running technique",
+      "Shorter steps and careful foot placement make tougher terrain less exhausting. Reduce the extra effort at biome boundaries.",
+      { resilience: 0.16 },
       "mountain",
-      "altitude",
+      "trailcraft",
     ],
     [
       "Rolling start",
@@ -116,20 +116,20 @@ export const RUNNER: Discovery[][] = [
   [
     [
       "Proper running shoes",
-      "Actual running shoes. The lab slippers have been respectfully retired.",
-      { speed: 0.08, economy: 0.12 },
+      "Retire the lab slippers. Running soles let Ellis hold a faster pace. This is permanent footwear research; collected gear comes later.",
+      { speed: 0.15 },
       "shoe",
     ],
     [
       "Springy midsoles",
-      "A little trampoline under each foot. The ethics panel was surprisingly relaxed.",
-      { acceleration: 0.25, economy: 0.14 },
+      "More spring in the sole means a faster comfortable stride. No actual trampolines were approved.",
+      { speed: 0.14 },
       "spring",
     ],
     [
       "Ventilated lab coat",
       "Science remains professional. Armpits become habitable.",
-      { resilience: 0.28, recovery: 0.1 },
+      { resilience: 0.28 },
       "coat",
     ],
     [
@@ -167,7 +167,7 @@ export const RUNNER: Discovery[][] = [
   [
     [
       "Pocket tailwind",
-      "An extremely small fan. An extremely confident grant application.",
+      "A backpack blower sends air backwards. The runner gets a modest forward nudge; the lab gets a noise complaint.",
       { wind: 0.2 },
       "wind",
     ],
@@ -191,7 +191,7 @@ export const RUNNER: Discovery[][] = [
     ],
     [
       "Field survey drone",
-      "Each newly reached biome adds 20 RP to the final report.",
+      "Each newly reached biome adds 5 RP to the final report.",
       { yield: 0.2 },
       "eye",
       "survey",
@@ -684,10 +684,10 @@ export const SHARED: Discovery[][] = [
   ],
   [
     [
-      "Precision tools",
-      "Measure once. Build something that actually fits.",
-      { acceleration: 0.15 },
-      "tool",
+      "Field timing instruments",
+      "Accurate split times turn each stretch of road into more useful research data.",
+      { yield: 0.15 },
+      "wave",
     ],
     [
       "Weather station",

@@ -16,6 +16,11 @@ import {
   afford,
   totalTrials,
   biomeAt,
+  frontierPressure,
+  routeChallenge,
+  equipmentUnlocked,
+  sharedUnlocked,
+  trainingProgress,
 } from "./game";
 import { NODES, VARIANTS, NODE_MAP } from "./research";
 import type { Save } from "./game";
@@ -29,16 +34,82 @@ function completed(s = fresh()) {
   return s;
 }
 describe("distance-based expeditions", () => {
-  it("runs for minutes rather than seconds, and stamina ends the run", () => {
-    let s = advance(start({ ...fresh(), auto: false }), 120);
-    expect(s.trial).not.toBeNull();
-    expect(s.trial!.distance).toBeGreaterThan(300);
-    expect(s.trial!.energy).toBeLessThan(70);
-    s = completed(s);
+  it("ramps stamina pressure towards each frontier and releases it after crossing", () => {
+    for (const boundary of [100, 1000, 10000]) {
+      const region = biomeAt(boundary - 1);
+      expect(frontierPressure(boundary - 1)).toBeGreaterThan(
+        frontierPressure(region.start) * 5,
+      );
+      expect(frontierPressure(boundary + 0.1)).toBeLessThan(
+        frontierPressure(boundary - 0.1),
+      );
+    }
+  });
+  it("keeps acceleration useful after recurring slow sections", () => {
+    const slow = start(fresh());
+    slow.trial!.distance = 71;
+    slow.trial!.speed = 0.8;
+    const fast = { ...slow, researched: ["runner-1-0"] };
+    expect(routeChallenge(slow).difficulty).toBe("effort");
+    const a = advance(slow, 8),
+      b = advance(fast, 8);
+    expect(b.trial!.distance).toBeGreaterThan(a.trial!.distance + 0.4);
+    expect(b.trial!.speed).toBeGreaterThan(a.trial!.speed);
+    const early = advance(start(fresh()), 4);
+    expect(early.trial!.speed).toBeLessThan(1);
+  });
+  it("credits visible XP during the run exactly once and keeps late systems gated", () => {
+    const live = advance(start(fresh()), 30),
+      bar = trainingProgress(live);
+    expect(bar.current).toBeGreaterThan(0);
+    expect(bar.progress).toBeGreaterThan(0);
+    const done = finish(live);
+    expect(done.progress.runner.xp).toBe(live.progress.runner.xp);
+    expect(done.history[0].xp).toBe(bar.earned);
+    expect(equipmentUnlocked(done)).toBe(false);
+    expect(sharedUnlocked({ ...done, science: 1e6 })).toBe(false);
+    expect(available({ ...done, science: 1e6 }, "global-0-0")).toBe(false);
+  });
+  it("teaches the first frontier in about a minute and funds exactly one opening discovery", () => {
+    const s = completed();
     expect(s.trial).toBeNull();
-    expect(s.history[0].duration).toBeGreaterThan(240);
+    expect(s.history[0].duration).toBeGreaterThan(50);
+    expect(s.history[0].duration).toBeLessThan(90);
     expect(totalTrials(s)).toBe(1);
-    expect(s.history[0].distance).toBeGreaterThan(700);
+    expect(s.history[0].distance).toBeGreaterThan(65);
+    expect(s.history[0].distance).toBeLessThan(100);
+    expect(s.science).toBeGreaterThanOrEqual(15);
+    expect(s.science).toBeLessThan(30);
+    const purchased = research(s, "runner-0-0");
+    expect(NODES.filter((n) => afford(purchased, n.id))).toHaveLength(0);
+    expect(s.inventory).toHaveLength(0);
+  });
+  it("allows one first debrief experiment even if careful pacing banks extra research", () => {
+    let s = start(fresh(), 123);
+    for (let i = 0; i < 10000 && s.trial; i++) {
+      s = step({ ...s, pace: s.trial.energy < 35 ? "recover" : "steady" }, 0.5);
+    }
+    expect(s.history[0].distance).toBeGreaterThan(200);
+    expect(s.science).toBeGreaterThanOrEqual(30);
+    s = research(s, "runner-0-0");
+    expect(s.science).toBeGreaterThanOrEqual(15);
+    expect(afford(s, "runner-2-0")).toBe(false);
+    expect(research(s, "runner-2-0")).toBe(s);
+    s = completed(s);
+    expect(available(s, "runner-2-0")).toBe(true);
+  });
+  it("rewards completed observation rather than repeated tiny aborts", () => {
+    const complete = completed();
+    const rpRate = complete.science / complete.history[0].duration;
+    const xpRate = complete.progress.runner.xp / complete.history[0].duration;
+    for (const seconds of [3, 10, 30, 45, 55]) {
+      const partial = finish(advance(start(fresh()), seconds));
+      expect(partial.science / seconds).toBeLessThan(rpRate);
+      expect(partial.progress.runner.xp / seconds).toBeLessThan(xpRate);
+    }
+    const tiny = finish(advance(start(fresh()), 3));
+    expect(tiny.science).toBe(0);
+    expect(tiny.progress.runner.xp).toBe(0);
   });
   it("crosses exact biome thresholds at 100 m, 1 km, 10 km and 100 km", () => {
     expect(biomeAt(99).short).toBe("City");
@@ -48,26 +119,33 @@ describe("distance-based expeditions", () => {
     expect(biomeAt(100000).short).toBe("Alpine");
   });
   it("rewards milestones and experience during a run", () => {
-    const s = advance(start(fresh()), 50);
-    expect(s.science).toBeGreaterThan(35);
-    expect(s.progress.runner.funds).toBeGreaterThan(12);
+    const s = advance(start(fresh()), 30);
+    expect(s.science).toBe(0);
     expect(s.progress.runner.xp).toBeGreaterThan(0);
     expect(s.progress.projectile.xp).toBe(0);
   });
   it("pushing trades endurance for speed; recovery restores energy but cannot prevent fatigue", () => {
     const base = start(fresh());
     base.trial!.energy = 50;
-    const rec = advance({ ...base, pace: "recover" }, 60),
-      push = advance({ ...base, pace: "push" }, 60);
+    const rec = advance({ ...base, pace: "recover" }, 10),
+      push = advance({ ...base, pace: "push" }, 10);
     expect(rec.trial!.energy).toBeGreaterThan(50);
     expect(rec.trial!.fatigue).toBeGreaterThan(0);
     expect(push.trial!.speed).toBeGreaterThan(rec.trial!.speed);
-    expect(push.trial!.energy).toBeLessThan(10);
+    expect(push.trial!.energy).toBeLessThan(35);
+    const steadyRun = completed(fresh()),
+      pushRun = completed({ ...fresh(), pace: "push" });
+    expect(pushRun.history[0].distance).toBeLessThan(
+      steadyRun.history[0].distance * 0.8,
+    );
+    expect(pushRun.history[0].speed).toBeGreaterThan(
+      steadyRun.history[0].speed,
+    );
   });
   it("stamina research increases maximum capacity and expedition reach", () => {
-    const s = research(fresh(), "runner-0-0");
-    expect(stats(s).stamina).toBeCloseTo(1.16);
-    expect(start(s).trial!.energy).toBeCloseTo(116);
+    const s = research({ ...fresh(), science: 15 }, "runner-0-0");
+    expect(stats(s).stamina).toBeCloseTo(1.25);
+    expect(start(s).trial!.energy).toBeCloseTo(125);
     const a = completed(fresh()),
       b = completed(s);
     expect(b.history[0].distance).toBeGreaterThan(a.history[0].distance);
@@ -79,15 +157,16 @@ describe("distance-based expeditions", () => {
     expect(s.trial!.rations).toBe(2);
     expect(s.trial!.energy).toBe(57);
     expect(supply(s)).toBe(s);
-    s = advance(s, 46);
+    s.trial!.supplyCooldown = 0;
     s = supply(s);
     expect(s.trial!.rations).toBe(1);
   });
   it("route decisions change the run without reflex clicking", () => {
     const base = fresh();
-    base.progress.runner.trials = 1;
-    let s = advance(start(base), 66);
-    expect(s.trial!.event).toBe(0);
+    base.progress.runner.trials = 3;
+    const s = advance(start(base), 30);
+    expect(s.trial!.event).not.toBeNull();
+    s.trial!.event = 0;
     const shade = decide(s, "a"),
       fast = decide(s, "b");
     expect(shade.trial!.route).toBe("shade");
@@ -98,7 +177,7 @@ describe("distance-based expeditions", () => {
     expect(a.trial!.distance).toBeLessThan(b.trial!.distance);
   });
   it("finishing banks results once, and auto-repeat starts only after rest", () => {
-    let s = advance(start({ ...fresh(), auto: true }), 80);
+    let s = advance(start({ ...fresh(), auto: true }), 20);
     s = finish(s);
     const money = s.science;
     expect(finish(s).science).toBe(money);
@@ -150,6 +229,8 @@ describe("nonlinear research web", () => {
     let s = fresh();
     s.science = 1e9;
     s.unlocked = ["runner", "projectile", "wheels"];
+    s.progress.runner.trials = 10;
+    s.progress.runner.bestDistance = 1000;
     Object.values(s.progress).forEach((p) => (p.funds = 1e9));
     for (let pass = 0; pass < 20; pass++)
       for (const n of NODES) s = research(s, n.id);
@@ -161,8 +242,8 @@ describe("nonlinear research web", () => {
       for (const v of list) if (v.node) expect(NODE_MAP.has(v.node)).toBe(true);
   });
   it("cannot double-purchase or spend another program currency", () => {
-    const s = research(fresh(), "runner-0-0");
-    expect(s.science).toBe(23);
+    const s = research({ ...fresh(), science: 15 }, "runner-0-0");
+    expect(s.science).toBe(0);
     expect(research(s, "runner-0-0")).toBe(s);
     expect(afford({ ...s, science: 1e8 }, "runner-0-1")).toBe(false);
   });
@@ -205,13 +286,13 @@ describe("nonlinear research web", () => {
 });
 describe("fresh saves and reset", () => {
   it("loads invalid or old-format data into a fresh lab", () => {
-    expect(restore("{broken").science).toBe(35);
+    expect(restore("{broken").science).toBe(0);
     expect(restore(JSON.stringify({ version: 1, science: 999 })).science).toBe(
-      35,
+      0,
     );
   });
   it("resumes a live expedition with finite validated values", () => {
-    const s = advance(start(fresh()), 120);
+    const s = advance(start(fresh()), 20);
     const loaded = restore(JSON.stringify(s));
     expect(loaded.trial!.distance).toBe(s.trial!.distance);
     expect(loaded.trial!.energy).toBe(s.trial!.energy);

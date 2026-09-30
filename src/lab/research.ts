@@ -27,6 +27,19 @@ export const effectLabel = (stat: Stat, value: number) =>
   stat === "wind"
     ? "+" + (value * 2).toFixed(1) + " m/s tailwind"
     : "+" + Math.round(value * 100) + "% " + STAT_LABELS[stat].toLowerCase();
+export const STAT_PURPOSE: Record<Stat, string> = {
+  speed: "A faster pace covers more ground while you have energy.",
+  stamina: "A bigger energy reserve lets you keep moving for longer.",
+  yield: "Bring home more RP from the same expedition.",
+  xp: "Gain experience faster and level up sooner.",
+  acceleration:
+    "Get moving faster and regain speed after terrain slows you down.",
+  economy: "Spend less energy while moving at the same pace.",
+  recovery: "Recover more energy when you ease your pace.",
+  resilience: "Slow the buildup of fatigue during a long expedition.",
+  wind: "A following wind adds forward speed.",
+  luck: "Improve the odds of finding useful equipment in the field.",
+};
 export interface ResearchNode {
   id: string;
   name: string;
@@ -57,7 +70,7 @@ export const PROGRAMS = {
     description: "One scientist. Two legs. Questionable limits.",
     unlock: 0,
     distance: 0,
-    base: 3.2,
+    base: 1.8,
     unit: "stamina",
   },
   projectile: {
@@ -91,7 +104,7 @@ export const PROGRAMS = {
 };
 
 export const LANES: Record<Program | "global", string[]> = {
-  runner: ["Human engine", "Movement", "Field engineering", "Atmospherics"],
+  runner: ["Endurance", "Running technique", "Footwear & kit", "Atmospherics"],
   projectile: [
     "Launch mechanics",
     "Flight",
@@ -127,6 +140,10 @@ export const NODES: ResearchNode[] = Object.entries(catalog).flatMap(
         else if (tier === 5) requires = [id(l, 2)];
         else if (tier === 6) anyOf = [id(l, 3), id(l, 4)];
         else requires = [id(l, 5), id(l, 6), id((l + 1) % 4, 3)];
+        if (p === "runner" && tier === 0) {
+          if (l === 1) requires = [id(0, 0), id(2, 0)];
+          if (l === 3) requires = [id(2, 3)];
+        }
         const stat = Object.keys(effects)[0] as Stat;
         return {
           id: id(l, tier),
@@ -137,13 +154,13 @@ export const NODES: ResearchNode[] = Object.entries(catalog).flatMap(
           tier,
           cost:
             p === "global"
-              ? 40 * Math.pow(4, tier)
+              ? 180 * Math.pow(4, tier)
               : Math.round(
-                  [12, 28, 34, 95, 160, 220, 540, 1400][tier] *
+                  [15, 24, 28, 70, 120, 165, 380, 950][tier] *
+                    (p === "runner" && l === 1 && tier === 0 ? 1.6 : 1) *
                     (l === 3 ? 1.15 : 1),
                 ),
-          localCost:
-            p === "global" ? 0 : [6, 12, 15, 32, 50, 65, 130, 300][tier],
+          localCost: p === "global" ? 0 : [0, 4, 6, 18, 30, 45, 90, 220][tier],
           requires,
           anyOf,
           kind: "permanent" as const,
@@ -157,6 +174,32 @@ export const NODES: ResearchNode[] = Object.entries(catalog).flatMap(
     ),
 );
 export const NODE_MAP = new Map(NODES.map((n) => [n.id, n]));
+export const runnerDiscoveryCount = (researched: string[]) =>
+  researched.filter((id) => NODE_MAP.get(id)?.program === "runner").length;
+export const beginnerResearch = (program: Program, researched: string[]) =>
+  program === "runner" && runnerDiscoveryCount(researched) < 4;
+/** Show one reachable idea from each discipline before filling spare slots. */
+export const firstDiscoveries = (researched: string[]) => {
+  const candidates = NODES.filter(
+    (n) =>
+      n.program === "runner" &&
+      !researched.includes(n.id) &&
+      n.requires.every((id) => researched.includes(id)) &&
+      (!n.anyOf?.length || n.anyOf.some((id) => researched.includes(id))),
+  ).sort((a, b) => a.cost - b.cost || a.lane - b.lane);
+  const lanes = new Set<number>();
+  const choices: ResearchNode[] = [];
+  for (const n of candidates) {
+    if (lanes.has(n.lane)) continue;
+    lanes.add(n.lane);
+    choices.push(n);
+  }
+  for (const n of candidates) {
+    if (choices.length >= 3) break;
+    if (!choices.includes(n)) choices.push(n);
+  }
+  return choices.sort((a, b) => a.cost - b.cost || a.lane - b.lane).slice(0, 3);
+};
 export const VARIANTS: Record<
   Program,
   {
