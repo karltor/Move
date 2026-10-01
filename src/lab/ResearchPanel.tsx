@@ -10,6 +10,8 @@ import {
   beginnerResearch,
   firstDiscoveries,
   runnerDiscoveryCount,
+  choiceAlternatives,
+  chosenAlternative,
   type ResearchNode,
   type Program,
 } from "./research";
@@ -179,6 +181,18 @@ export function FirstExperiments({ game, setGame, onRun }: ResearchProps) {
               <h2>{n.name}</h2>
               <p className="experiment-description">{n.description}</p>
               <div className="experiment-outcome">
+                {n.choiceGroup && (
+                  <div className="experiment-specialization">
+                    <b>Permanent specialization</b>
+                    <span>
+                      Choosing this closes{" "}
+                      {choiceAlternatives(n)
+                        .map((other) => other.name)
+                        .join(" / ")}
+                      .
+                    </span>
+                  </div>
+                )}
                 <div className="experiment-effects">
                   {Object.entries(n.effects).map(([stat, value], index) =>
                     index === 0 ? (
@@ -219,7 +233,11 @@ export function FirstExperiments({ game, setGame, onRun }: ResearchProps) {
                 <div>
                   <strong>{n.cost} RP</strong>
                   {n.localCost > 0 && <span> + {n.localCost} Endurance</span>}
-                  <small>One purchase · permanent</small>
+                  <small>
+                    {n.choiceGroup
+                      ? "Choose one · permanent"
+                      : "One purchase · permanent"}
+                  </small>
                 </div>
                 <button
                   className="primary"
@@ -265,6 +283,12 @@ export function FirstExperiments({ game, setGame, onRun }: ResearchProps) {
                 You can come back for the other improvement after another run.
               </p>
             </>
+          )}
+          {choices.some((n) => n.choiceGroup) && (
+            <small className="specialization-note">
+              Specializations trade one strength for another. Their advanced
+              paths join again; the other specialization stays closed.
+            </small>
           )}
           {showNotes && (
             <small>
@@ -369,7 +393,7 @@ export default function Research({ game, setGame, onRun }: ResearchProps) {
     <div className="atlas-screen">
       <div className="atlas-heading">
         <div>
-          <span className="eyebrow">Project Lost Tuesday</span>
+          <span className="eyebrow">Permanent research</span>
           <h1>The motion atlas</h1>
         </div>
         <div className="atlas-tabs">
@@ -548,7 +572,7 @@ export default function Research({ game, setGame, onRun }: ResearchProps) {
                   <b>MOVE</b>
                   <small>
                     {nodes.filter((n) => game.researched.includes(n.id)).length}{" "}
-                    / {nodes.length} discoveries
+                    discoveries
                   </small>
                 </div>
                 {LANES[tree].map((label, l) => (
@@ -556,12 +580,32 @@ export default function Research({ game, setGame, onRun }: ResearchProps) {
                     {label}
                     <small>
                       {
-                        [
-                          "Build the foundation",
-                          "Find your rhythm",
-                          "Make better tools",
-                          "Bend the rules",
-                        ][l]
+                        {
+                          runner: [
+                            "Build endurance",
+                            "Improve the stride",
+                            "Choose running kit",
+                            "Control airflow",
+                          ],
+                          projectile: [
+                            "Choose a release",
+                            "Shape the trajectory",
+                            "Store launch energy",
+                            "Measure each flight",
+                          ],
+                          wheels: [
+                            "Reduce rolling losses",
+                            "Choose propulsion",
+                            "Improve the chassis",
+                            "Control the vehicle",
+                          ],
+                          global: [
+                            "Record experiments",
+                            "Support field work",
+                            "Develop materials",
+                            "Improve measurements",
+                          ],
+                        }[tree][l]
                       }
                     </small>
                   </div>
@@ -571,6 +615,7 @@ export default function Research({ game, setGame, onRun }: ResearchProps) {
                     revealed = known(n),
                     owned = game.researched.includes(n.id),
                     can = afford(game, n.id);
+                  const excluded = chosenAlternative(n, game.researched);
                   return (
                     <button
                       key={n.id}
@@ -585,6 +630,7 @@ export default function Research({ game, setGame, onRun }: ResearchProps) {
                               ? " reachable"
                               : " sealed") +
                         (selected === n.id ? " chosen" : "") +
+                        (excluded && !owned ? " excluded" : "") +
                         (revealed ? "" : " unknown")
                       }
                       style={{ left: pos.x, top: pos.y }}
@@ -605,11 +651,20 @@ export default function Research({ game, setGame, onRun }: ResearchProps) {
                         {revealed ? <Glyph name={n.icon} /> : <span>·</span>}
                         {owned && <i>✓</i>}
                         {can && <i>+</i>}
+                        {excluded && !owned && <i>×</i>}
                       </span>
                       {revealed && (
                         <>
                           <strong>{n.name}</strong>
-                          {!owned && <small>{n.cost} RP</small>}
+                          {!owned && (
+                            <small>
+                              {excluded
+                                ? "Other specialization chosen"
+                                : n.choiceGroup
+                                  ? "Choose one · " + n.cost + " RP"
+                                  : n.cost + " RP"}
+                            </small>
+                          )}
                         </>
                       )}
                     </button>
@@ -667,10 +722,12 @@ export default function Research({ game, setGame, onRun }: ResearchProps) {
                   {LANES[detail.program][detail.lane]}
                 </span>
                 <h2>{detail.name}</h2>
-                <p>{detail.description}</p>
                 <ul className="discovery-effects">
                   {Object.entries(detail.effects).map(([stat, value]) => (
-                    <li key={stat}>
+                    <li
+                      key={stat}
+                      className={value < 0 ? "tradeoff-effect" : undefined}
+                    >
                       {effectLabel(stat as keyof typeof currentStats, value)}
                     </li>
                   ))}
@@ -682,10 +739,55 @@ export default function Research({ game, setGame, onRun }: ResearchProps) {
                     .filter((v) => v.node === detail.id)
                     .map((v) => (
                       <li key={v.id} className="special-effect">
-                        Unlocks {v.name} · {v.multiplier}× vehicle speed
+                        Unlocks {v.name}
+                        {detail.program === "wheels" && v.multiplier
+                          ? " · " + v.multiplier + "× vehicle speed"
+                          : ""}
                       </li>
                     ))}
                 </ul>
+                <p>{detail.description}</p>
+                {detail.choiceGroup && (
+                  <div
+                    className={
+                      "research-choice " +
+                      (chosenAlternative(detail, game.researched)
+                        ? "choice-closed"
+                        : "")
+                    }
+                  >
+                    <b>
+                      {chosenAlternative(detail, game.researched)
+                        ? "Other specialization chosen"
+                        : game.researched.includes(detail.id)
+                          ? "Your specialization"
+                          : "Choose one specialization"}
+                    </b>
+                    <p>
+                      {chosenAlternative(detail, game.researched)
+                        ? "This path is closed because you researched " +
+                          chosenAlternative(detail, game.researched)!.name +
+                          "."
+                        : "Choosing one closes the other option. Later shared discoveries remain reachable from either path."}
+                    </p>
+                    {choiceAlternatives(detail).map((other) => (
+                      <button key={other.id} onClick={() => inspect(other.id)}>
+                        Compare: {other.name}
+                        <small>
+                          {Object.entries(other.effects)
+                            .map(([key, value]) =>
+                              effectLabel(
+                                key as keyof typeof currentStats,
+                                value,
+                              ),
+                            )
+                            .join(" · ")}
+                        </small>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
                 {Object.keys(detail.effects).length === 1 && (
                   <p className="stat-purpose">{STAT_PURPOSE[detail.stat]}</p>
                 )}
@@ -770,8 +872,8 @@ export default function Research({ game, setGame, onRun }: ResearchProps) {
                   changes.
                 </p>
                 <p className="atlas-reading-tip">
-                  Lines show what unlocks next. Choose either branch; paths join
-                  again at larger discoveries.
+                  Lines show prerequisites. Specialization pairs are permanent
+                  choices; compare their benefits and costs before buying.
                 </p>
                 <div className="ready-discoveries">
                   {ready.map((n) => (
@@ -819,10 +921,20 @@ export default function Research({ game, setGame, onRun }: ResearchProps) {
               {game.researched.includes(detail.id)
                 ? "✓ Permanently researched"
                 : afford(game, detail.id)
-                  ? "Research discovery · " + detail.cost + " RP"
+                  ? "Research · " +
+                    detail.cost +
+                    " RP" +
+                    (detail.localCost
+                      ? " + " +
+                        detail.localCost +
+                        " " +
+                        PROGRAMS[game.program].currency
+                      : "")
                   : available(game, detail.id)
                     ? "More resources needed"
-                    : "Discover the prerequisites"}
+                    : chosenAlternative(detail, game.researched)
+                      ? "Other specialization chosen"
+                      : "Discover the prerequisites"}
             </button>
           )}
         </aside>

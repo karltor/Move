@@ -1,12 +1,10 @@
-import Story, { nextStory } from "./lab/Story";
+import Story, { initializeSkillGuides, nextStory } from "./lab/Story";
 import { useEffect, useRef, useState } from "react";
-import { PROGRAMS, type Program } from "./lab/research";
 import {
   fresh,
   restore,
   SAVE_KEY,
   step,
-  selectProgram,
   totalTrials,
   equipmentUnlocked,
   type Save,
@@ -21,9 +19,9 @@ import "./lab/expedition-feedback.css";
 import "./lab/story-look.css";
 function read() {
   try {
-    return restore(localStorage.getItem(SAVE_KEY));
+    return initializeSkillGuides(restore(localStorage.getItem(SAVE_KEY)));
   } catch {
-    return fresh();
+    return initializeSkillGuides(fresh());
   }
 }
 type Tab = "field" | "research" | "equipment" | "journal" | "settings";
@@ -104,7 +102,7 @@ export default function App() {
     setTab("field");
   }
   const nav: [Tab, string][] = [
-    ["field", "Run"],
+    ["field", game.unlocked.length > 1 ? "Experiment" : "Run"],
     ...(experienced ? [["research", "Research"] as [Tab, string]] : []),
     ...(equipmentUnlocked(game) && game.inventory.length
       ? [["equipment", "Equipment"] as [Tab, string]]
@@ -161,20 +159,6 @@ export default function App() {
           </button>
         </div>
       </header>
-      {game.unlocked.length > 1 && (
-        <div className="program-strip" aria-label="Research programs">
-          {game.unlocked.map((p: Program) => (
-            <button
-              key={p}
-              className={p === game.program ? "active" : ""}
-              disabled={!!game.trial && p !== game.program}
-              onClick={() => setGame((s) => selectProgram(s, p))}
-            >
-              {PROGRAMS[p].short}
-            </button>
-          ))}
-        </div>
-      )}
       <main>
         {tab === "field" && (
           <Expedition
@@ -182,6 +166,7 @@ export default function App() {
             setGame={setGame}
             onResearch={() => setTab("research")}
             onEquipment={() => setTab("equipment")}
+            stagingReady={!story && !resetOpen}
           />
         )}
         {tab === "research" && (
@@ -231,6 +216,7 @@ export default function App() {
         <Story
           key={story}
           id={story}
+          game={game}
           onDone={() =>
             setGame((s) => ({ ...s, storySeen: [...s.storySeen, story] }))
           }

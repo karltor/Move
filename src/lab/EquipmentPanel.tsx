@@ -1,11 +1,5 @@
 import { useState } from "react";
-import {
-  SLOTS,
-  SLOT_NAMES,
-  STAT_NAMES,
-  RARITIES,
-  type Gear,
-} from "./equipment";
+import { SLOTS, slotName, STAT_NAMES, RARITIES, type Gear } from "./equipment";
 import { equipGear, salvageGear, distance, type Save } from "./game";
 import { PROGRAMS, type Stat } from "./research";
 export default function Equipment({
@@ -40,7 +34,7 @@ export default function Equipment({
             {PROGRAMS[game.program].short} loadout
           </span>
           <h1>Equipment</h1>
-          <p>Find it on the road. Equip it between runs.</p>
+          <p>Choose equipment before an experiment.</p>
         </div>
         <span>{game.inventory.length} / 90 pieces</span>
       </div>
@@ -51,7 +45,7 @@ export default function Equipment({
           );
           return (
             <section key={slot} className="equipment-slot">
-              <span className="eyebrow">{SLOT_NAMES[slot]}</span>
+              <span className="eyebrow">{slotName(game.program, slot)}</span>
               {g ? (
                 <>
                   <h2>{g.name}</h2>
@@ -74,7 +68,7 @@ export default function Equipment({
                     One piece of{" "}
                     {slot === "instrument"
                       ? "equipment"
-                      : SLOT_NAMES[slot].toLowerCase()}{" "}
+                      : slotName(game.program, slot).toLowerCase()}{" "}
                     fits here.
                   </p>
                 </>
@@ -96,9 +90,9 @@ export default function Equipment({
       </div>
       {!items.length && (
         <div className="empty">
-          <h2>The road has something for you.</h2>
+          <h2>No equipment for this experiment yet.</h2>
           <p>
-            Keep running to find your first piece. Ordinary gear has one modest
+            Complete experiments to find equipment. Ordinary gear has one modest
             bonus; rarer gear has up to four.
           </p>
         </div>
@@ -122,7 +116,7 @@ export default function Equipment({
                 <span className={"rarity " + g.rarity.toLowerCase()}>
                   {g.rarity}
                 </span>
-                <small>{SLOT_NAMES[g.slot]}</small>
+                <small>{slotName(game.program, g.slot)}</small>
               </div>
               <h3>{g.name}</h3>
               {affixes(g)}

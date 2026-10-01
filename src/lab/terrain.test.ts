@@ -1,5 +1,22 @@
 import { expect, it } from "vitest";
-import { createTerrain, routeSurface } from "./terrain";
+import { createTerrain, routeSurface, roughPatch } from "./terrain";
+import { routeSegment } from "./game";
+
+it("shows damaged paving where roadworks slow the runner without inventing a hill", () => {
+  expect(routeSegment(50).kind).toBe("effort");
+  expect(roughPatch(50)).toBe(1);
+  expect(roughPatch(20)).toBe(0);
+  const t = createTerrain();
+  t.update(50);
+  const g = t.mesh.geometry;
+  expect(g.getAttribute("surfacePatch").getX(80 * 11 + 5)).toBe(1);
+  expect(g.getAttribute("position").getY(80 * 11 + 5)).toBeCloseTo(0.003);
+  const patch = Array.from(g.getAttribute("surfacePatch").array);
+  t.update(50.1);
+  expect(Array.from(g.getAttribute("surfacePatch").array)).toEqual(patch);
+  t.mesh.geometry.dispose();
+  t.mesh.material.dispose();
+});
 
 it("moves road cells forward without changing the width of a fixed piece of gravel", () => {
   const t = createTerrain();

@@ -6,7 +6,15 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { biomeBlend, BIOMES, type Save } from "./game";
+import {
+  biomeBlend,
+  BIOMES,
+  projectilePhysics,
+  hasAbility,
+  type Save,
+} from "./game";
+import { advanceFlight, predictFlight } from "./ballistics";
+import { modelRootName } from "./modelRoots";
 import { VARIANTS } from "./research";
 export default function World({
   game,
@@ -58,6 +66,8 @@ export default function World({
     const camera = new THREE.PerspectiveCamera(43, 1, 0.1, 150);
     camera.position.set(4.4, 2.9, 6.5);
     const controls = new OrbitControls(camera, renderer.domElement);
+    const rangeCamera = new THREE.Vector3(4.4, 2.9, 6.5),
+      rangeTarget = new THREE.Vector3(1, 1.15, 0);
     controls.target.set(1, 1.15, 0);
     controls.enableDamping = true;
     controls.enablePan = false;
@@ -92,14 +102,101 @@ export default function World({
       30,
     );
     scene.add(marks);
+    const trailGeometry = new THREE.BufferGeometry();
+    const trailPositions = new Float32Array(1800);
+    trailGeometry.setAttribute(
+      "position",
+      new THREE.BufferAttribute(trailPositions, 3),
+    );
+    trailGeometry.setDrawRange(0, 0);
+    const flightTrail = new THREE.Line(
+      trailGeometry,
+      new THREE.LineBasicMaterial({
+        color: "#e37d35",
+        transparent: true,
+        opacity: 0.6,
+      }),
+    );
+    flightTrail.frustumCulled = false;
+    scene.add(flightTrail);
+    const trailOutline = new THREE.Points(
+      trailGeometry,
+      new THREE.PointsMaterial({
+        color: "#fff9e4",
+        size: 0.22,
+        depthTest: false,
+      }),
+    );
+    const trailDots = new THREE.Points(
+      trailGeometry,
+      new THREE.PointsMaterial({
+        color: "#be5a19",
+        size: 0.13,
+        depthTest: false,
+      }),
+    );
+    trailOutline.frustumCulled = false;
+    trailDots.frustumCulled = false;
+    trailOutline.renderOrder = 6;
+    trailDots.renderOrder = 7;
+    scene.add(trailOutline, trailDots);
+    const projectileHalo = new THREE.Group();
+    const haloWhite = new THREE.Mesh(
+      new THREE.RingGeometry(0.23, 0.3, 24),
+      new THREE.MeshBasicMaterial({
+        color: "#fffdf0",
+        depthTest: false,
+        side: THREE.DoubleSide,
+      }),
+    );
+    const haloOrange = new THREE.Mesh(
+      new THREE.RingGeometry(0.18, 0.23, 24),
+      new THREE.MeshBasicMaterial({
+        color: "#de702a",
+        depthTest: false,
+        side: THREE.DoubleSide,
+      }),
+    );
+    haloWhite.renderOrder = 9;
+    haloOrange.renderOrder = 10;
+    projectileHalo.add(haloWhite, haloOrange);
+    projectileHalo.visible = false;
+    scene.add(projectileHalo);
+    const landingMarker = new THREE.Mesh(
+      new THREE.RingGeometry(0.16, 0.23, 24),
+      new THREE.MeshBasicMaterial({ color: "#ef7f31", side: THREE.DoubleSide }),
+    );
+    landingMarker.rotation.x = -Math.PI / 2;
+    landingMarker.visible = false;
+    scene.add(landingMarker);
+    const predictionLine = new THREE.Line(
+      new THREE.BufferGeometry(),
+      new THREE.LineDashedMaterial({
+        color: "#1a6973",
+        dashSize: 0.3,
+        gapSize: 0.22,
+        transparent: true,
+        opacity: 0.35,
+      }),
+    );
+    predictionLine.visible = false;
+    scene.add(predictionLine);
     const matrix = new THREE.Matrix4();
     let library: THREE.Group | undefined,
       scientist: THREE.Object3D | undefined,
       vehicle: THREE.Object3D | undefined,
       projectile: THREE.Object3D | undefined,
+      cannonBarrel: THREE.Group | undefined,
       active = "",
       wornKey = "",
-      lastView = false;
+      lastView = false,
+      flightKey = "",
+      flightScale = 0.65,
+      expectedRange = 1,
+      trailCount = 0,
+      lastShot = -1,
+      lastTrailX = -1,
+      projectileGearKey = "reset";
     const parts = new Map<string, THREE.Object3D>();
     const assets = new Map<string, THREE.Group>();
     const foliage: {
@@ -129,6 +226,20 @@ export default function World({
       });
       return o;
     };
+    const privateMaterials = (o: THREE.Object3D) =>
+      o.traverse((c) => {
+        if (!(c instanceof THREE.Mesh)) return;
+        const list = (
+          Array.isArray(c.material) ? c.material : [c.material]
+        ).map((m) => {
+          const copy = m.clone();
+          if (copy instanceof THREE.MeshStandardMaterial)
+            copy.userData.gearBaseColor = copy.color.getHex();
+          materials.add(copy);
+          return copy;
+        });
+        c.material = Array.isArray(c.material) ? list : list[0];
+      });
     function bake(name: string) {
       if (assets.has(name)) return assets.get(name)!;
       const src = library?.getObjectByName(name);
@@ -235,8 +346,10 @@ export default function World({
     ).then(
       ([gltf, legacy]) => {
         // Authored character and scenery take precedence; retain later vehicles.
-        for (const child of [...legacy.scene.children])
+        for (const child of [...legacy.scene.children]) {
+          child.name = modelRootName(child);
           if (!gltf.scene.getObjectByName(child.name)) gltf.scene.add(child);
+        }
         collect(legacy.scene);
         if (!alive) {
           collect(gltf.scene);
@@ -289,6 +402,87 @@ export default function World({
         variant = VARIANTS[s.program].find(
           (v) => v.id === s.progress[s.program].variant,
         )!;
+      const ballistics = s.program === "projectile";
+      if (ballistics) {
+        const config =
+          t?.ballistic?.phase === "flight"
+            ? (t.ballistic.config ?? projectilePhysics(s))
+            : projectilePhysics(s);
+        const nextShot =
+          t?.ballistic?.phase === "flight"
+            ? t.ballistic.shots
+            : (t?.ballistic?.shots ?? 0) + 1;
+        const chargedShot = config.charged && nextShot % 3 === 0;
+        const nextKey = JSON.stringify([
+          s.program,
+          variant.id,
+          config.speed,
+          config.angle,
+          config.drag,
+          config.lift,
+          config.skip,
+          chargedShot,
+        ]);
+        if (nextKey !== flightKey) {
+          const prediction = predictFlight({
+            ...config,
+            speed: config.speed * (chargedShot ? 1.18 : 1),
+          });
+          const envelope = predictFlight({
+            ...config,
+            speed: config.speed * (config.charged ? 1.18 : 1),
+          });
+          flightScale = Math.min(0.65, 22 / Math.max(1, envelope.range));
+          expectedRange = Math.max(1, prediction.range);
+          const origin = ["rock", "plane"].includes(variant.id)
+            ? 0.3
+            : variant.id === "sling"
+              ? 0.05
+              : variant.id === "cannon"
+                ? -0.4 +
+                  Math.hypot(1.6, 0.65) *
+                    Math.cos((config.angle * Math.PI) / 180)
+                : 1.4;
+          predictionLine.geometry.dispose();
+          predictionLine.geometry = new THREE.BufferGeometry().setFromPoints(
+            prediction.points.map(
+              (p) =>
+                new THREE.Vector3(
+                  origin + p.x * flightScale,
+                  p.y * flightScale +
+                    config.height *
+                      (1 - flightScale) *
+                      (1 - p.x / expectedRange),
+                  0,
+                ),
+            ),
+          );
+          predictionLine.computeLineDistances();
+          const sceneRange = envelope.range * flightScale;
+          const sceneHeight = envelope.height * flightScale;
+          const targetHeight = Math.max(1.5, sceneHeight * 0.5);
+          const distanceToFit = Math.max(
+            12,
+            (sceneRange + 5) /
+              (2 * Math.tan(THREE.MathUtils.degToRad(43) / 2) * camera.aspect),
+            (sceneHeight + 3) /
+              (2 * Math.tan(THREE.MathUtils.degToRad(43) / 2)),
+          );
+          rangeCamera.set(
+            sceneRange * 0.5,
+            targetHeight + distanceToFit * 0.28,
+            distanceToFit * 1.1,
+          );
+          rangeTarget.set(sceneRange * 0.45, targetHeight, 0);
+          if (!view.current) {
+            camera.position.copy(rangeCamera);
+            controls.target.copy(rangeTarget);
+          }
+          flightKey = nextKey;
+          trailCount = 0;
+          trailGeometry.setDrawRange(0, 0);
+        }
+      } else flightKey = "";
       if (!!t !== wasRunning) {
         wasRunning = !!t;
         renderDistance = t?.distance ?? 0;
@@ -305,6 +499,12 @@ export default function World({
           (t.distance - renderDistance) * (1 - Math.exp(-dt * 3));
       renderTime += dt;
       if (t) renderTime += (t.time - renderTime) * dt * 3;
+      // A launch station stays planted. Flight distance belongs to the shot,
+      // never to the scientist, cannon or scrolling road beneath them.
+      if (ballistics) {
+        renderDistance = 0;
+        renderSpeed = 0;
+      }
       const blend = biomeBlend(renderDistance);
       terrain.update(renderDistance);
       const from = BIOMES[blend.from],
@@ -339,7 +539,11 @@ export default function World({
         if (!item.mesh.visible) continue;
         for (let i = 0; i < item.positions.length; i++) {
           const a = item.positions[i];
-          pos.set(((a.x - visualDistance + 12000000) % 120) - 60, 0, a.z);
+          pos.set(
+            ((a.x - visualDistance + 12000000) % 120) - 60,
+            0,
+            ballistics ? a.z - 22 : a.z,
+          );
           const ahead = biomeBlend(Math.max(0, renderDistance + pos.x / 0.65));
           const weight =
             ahead.from === ahead.to
@@ -369,6 +573,8 @@ export default function World({
         scientist = clone("Scientist");
         vehicle = undefined;
         projectile = undefined;
+        cannonBarrel = undefined;
+        projectileGearKey = "reset";
         if (scientist) {
           scene.add(scientist);
           wornKey = "";
@@ -414,12 +620,43 @@ export default function World({
               variant.model[0].toUpperCase() + variant.model.slice(1),
             );
             if (vehicle) {
-              vehicle.position.set(-2, 0, 0);
+              privateMaterials(vehicle);
+              vehicle.position.set(0, 0, 0);
               scene.add(vehicle);
+              if (variant.id === "cannon") {
+                const barrelParts: THREE.Object3D[] = [];
+                vehicle.traverse((o) => {
+                  if (o.name.startsWith("Barrel")) barrelParts.push(o);
+                });
+                cannonBarrel = new THREE.Group();
+                cannonBarrel.position.set(-0.4, 0.8, 0);
+                vehicle.add(cannonBarrel);
+                for (const o of barrelParts) {
+                  cannonBarrel.add(o);
+                  o.position.x += 0.4;
+                  o.position.y -= 0.8;
+                }
+              }
             }
           }
           projectile = clone(variant.id === "plane" ? "Plane" : "Rock");
+          if (["cannon", "particle"].includes(variant.id)) {
+            projectile = new THREE.Mesh(
+              new THREE.SphereGeometry(
+                variant.id === "particle" ? 0.12 : 0.16,
+                20,
+                14,
+              ),
+              new THREE.MeshStandardMaterial({
+                color: variant.id === "particle" ? "#78e7ff" : "#293c42",
+                roughness: 0.55,
+              }),
+            );
+            collect(projectile);
+          }
           if (projectile) {
+            if (projectile instanceof THREE.Mesh) projectile.castShadow = true;
+            privateMaterials(projectile);
             if (variant.id === "particle")
               projectile.traverse((o) => {
                 if (o instanceof THREE.Mesh) {
@@ -437,6 +674,100 @@ export default function World({
         }
         active = key;
       }
+      if (ballistics && projectile) {
+        const fitted = s.inventory.filter(
+          (item) =>
+            item.program === "projectile" && s.equipped.includes(item.id),
+        );
+        const gearKey = fitted.map((item) => item.id).join(":");
+        if (gearKey !== projectileGearKey) {
+          projectileGearKey = gearKey;
+          const body = fitted.find((item) => item.slot === "outfit");
+          const rig = fitted.find((item) => item.slot === "footwear");
+          const palette = {
+            Common: "#b07139",
+            Uncommon: "#38796b",
+            Rare: "#346fa4",
+            Epic: "#7755a5",
+          };
+          projectile.traverse((o) => {
+            if (o instanceof THREE.Mesh)
+              for (const m of Array.isArray(o.material)
+                ? o.material
+                : [o.material])
+                if (m instanceof THREE.MeshStandardMaterial)
+                  m.color.set(
+                    body
+                      ? palette[body.rarity]
+                      : (m.userData.gearBaseColor ?? "#c4c9bf"),
+                  );
+          });
+          if (vehicle)
+            vehicle.traverse((o) => {
+              if (o instanceof THREE.Mesh)
+                for (const m of Array.isArray(o.material)
+                  ? o.material
+                  : [o.material])
+                  if (
+                    m instanceof THREE.MeshStandardMaterial &&
+                    m.name.toLowerCase().includes("mint")
+                  )
+                    m.color.set(
+                      rig
+                        ? palette[rig.rarity]
+                        : (m.userData.gearBaseColor ?? "#619884"),
+                    );
+            });
+          const oldRig = scene.getObjectByName("FittedLaunchRig");
+          if (oldRig) scene.remove(oldRig);
+          if (rig && !vehicle) {
+            const releaseRig = new THREE.Mesh(
+              new THREE.BoxGeometry(0.8, 0.55, 0.42),
+              new THREE.MeshStandardMaterial({
+                color: palette[rig.rarity],
+                roughness: 0.5,
+              }),
+            );
+            releaseRig.name = "FittedLaunchRig";
+            releaseRig.position.set(-0.9, 0.28, -0.7);
+            releaseRig.castShadow = true;
+            scene.add(releaseRig);
+            collect(releaseRig);
+          }
+          // An equipped measuring instrument belongs beside the launcher,
+          // rather than appearing as a backpack or pair of scientist shoes.
+          const instrument = fitted.find((item) => item.slot === "instrument");
+          const oldSensor = scene.getObjectByName("FittedLaunchSensor");
+          if (oldSensor) scene.remove(oldSensor);
+          if (instrument) {
+            const sensor = new THREE.Group();
+            sensor.name = "FittedLaunchSensor";
+            const material = new THREE.MeshStandardMaterial({
+              color: palette[instrument.rarity],
+              roughness: 0.55,
+            });
+            const post = new THREE.Mesh(
+              new THREE.CylinderGeometry(0.035, 0.045, 0.9, 12),
+              material,
+            );
+            post.position.set(-0.7, 0.45, 1.5);
+            sensor.add(post);
+            const meter = new THREE.Mesh(
+              new THREE.BoxGeometry(0.45, 0.28, 0.1),
+              material,
+            );
+            meter.position.set(-0.7, 0.98, 1.5);
+            sensor.add(meter);
+            scene.add(sensor);
+            collect(sensor);
+          }
+        }
+      } else {
+        const sensor = scene.getObjectByName("FittedLaunchSensor");
+        if (sensor) scene.remove(sensor);
+        const releaseRig = scene.getObjectByName("FittedLaunchRig");
+        if (releaseRig) scene.remove(releaseRig);
+      }
       const moving = !!t && renderSpeed > 0.15;
       // Keep the planted ankle within the two 43 cm leg segments.  The old
       // 38 cm reach forced a deep crouch even at a gentle first-run speed.
@@ -444,7 +775,9 @@ export default function World({
       gait +=
         dt * Math.min(2.8, (renderSpeed * 0.65) / (4 * stride)) * Math.PI * 2;
       if (scientist) {
-        const worn = characterEquipment(s);
+        const worn = characterEquipment(
+          ballistics ? { ...s, equipped: [] } : s,
+        );
         if (worn.key !== wornKey) {
           wornKey = worn.key;
           for (const [name, visible] of Object.entries(worn.visible)) {
@@ -456,13 +789,21 @@ export default function World({
             ["GearShoeR", worn.colors.footwear],
             ["GearOutfit", worn.colors.outfit],
             ["GearInstrument", worn.colors.instrument],
-          ]) scientist.getObjectByName(name)?.traverse((o) => {
-            if (!(o instanceof THREE.Mesh)) return;
-            for (const m of Array.isArray(o.material) ? o.material : [o.material])
-              if (m instanceof THREE.MeshStandardMaterial && m.name.includes("equipment blue")) m.color.set(color);
-          });
+          ])
+            scientist.getObjectByName(name)?.traverse((o) => {
+              if (!(o instanceof THREE.Mesh)) return;
+              for (const m of Array.isArray(o.material)
+                ? o.material
+                : [o.material])
+                if (
+                  m instanceof THREE.MeshStandardMaterial &&
+                  m.name.includes("equipment blue")
+                )
+                  m.color.set(color);
+            });
         }
-        scientist.position.set(s.program === "projectile" ? -2 : 0, 0.012, 0);
+        const launcher = ballistics && !["rock", "plane"].includes(variant.id);
+        scientist.position.set(launcher ? -2 : 0, 0.012, launcher ? 1.3 : 0);
         scientist.visible =
           s.program !== "wheels" ||
           variant.id === "board" ||
@@ -510,8 +851,13 @@ export default function World({
           if (arm)
             arm.rotation.z = running
               ? -Math.cos(phase) * 0.55 - 0.15
-              : s.program === "projectile" && t
-                ? -0.5 + Math.sin(renderTime * 1.2) * 0.9
+              : ballistics && t && !launcher
+                ? t.ballistic?.phase === "prepare"
+                  ? -0.75
+                  : t.ballistic?.phase === "flight" &&
+                      t.ballistic.phaseTime < 0.35
+                    ? 1.0
+                    : 0.15
                 : 0;
           if (elbow)
             elbow.rotation.z = running
@@ -530,24 +876,110 @@ export default function World({
         });
       }
       if (projectile) {
-        const f = (renderTime % 5) / 5;
-        projectile.visible = !!t;
+        const storedFlight = t?.ballistic;
+        const b =
+          storedFlight?.phase === "flight"
+            ? advanceFlight(
+                storedFlight,
+                Math.max(
+                  0,
+                  Math.min(0.12, renderTime - (t?.time ?? renderTime)),
+                ),
+                storedFlight.config ?? projectilePhysics(s),
+              )
+            : storedFlight;
+        const angle = b?.config?.angle ?? projectilePhysics(s).angle;
+        const origin = ["rock", "plane"].includes(variant.id)
+          ? 0.3
+          : variant.id === "sling"
+            ? 0.05
+            : variant.id === "cannon"
+              ? -0.4 + Math.hypot(1.6, 0.65) * Math.cos((angle * Math.PI) / 180)
+              : 1.4;
+        if (cannonBarrel)
+          cannonBarrel.rotation.z =
+            (angle * Math.PI) / 180 - Math.atan2(0.65, 1.6);
+        projectile.visible = !!b && b.phase !== "prepare";
+        projectileHalo.visible = !!b && b.phase === "flight";
+        const height = b?.config?.height ?? projectilePhysics(s).height;
         projectile.position.set(
-          -1 + f * 20,
-          0.9 + (variant.id === "particle" ? 0 : Math.sin(f * Math.PI) * 3.5),
+          origin + (b?.x ?? 0) * flightScale,
+          b?.phase === "landed"
+            ? 0.12
+            : height + ((b?.y ?? height) - height) * flightScale,
           0,
         );
+        // Lift must reach the ground at the same scene coordinate as the arc.
+        if (b)
+          projectile.position.y =
+            b.phase === "landed"
+              ? 0.12
+              : Math.max(
+                  0.12,
+                  b.y * flightScale +
+                    height * (1 - flightScale) * (1 - b.x / expectedRange),
+                );
         projectile.rotation.z =
-          variant.id === "plane" ? Math.cos(f * Math.PI) * 0.22 : renderTime;
+          variant.id === "plane"
+            ? Math.atan2(b?.vy ?? 0, b?.vx ?? 1)
+            : renderTime * 3;
+        projectileHalo.position.copy(projectile.position);
+        projectileHalo.quaternion.copy(camera.quaternion);
+        flightTrail.visible = !!b;
+        trailOutline.visible = !!b;
+        trailDots.visible = !!b;
+        if (b && b.shots !== lastShot) {
+          lastShot = b.shots;
+          trailCount = 0;
+          lastTrailX = -1;
+        }
+        if (
+          b?.phase === "flight" &&
+          Math.abs(b.x - lastTrailX) * flightScale > 0.03 &&
+          trailCount < 600
+        ) {
+          const i = trailCount * 3;
+          trailPositions[i] = origin + b.x * flightScale;
+          trailPositions[i + 1] = Math.max(
+            0.025,
+            b.y * flightScale +
+              height * (1 - flightScale) * (1 - b.x / expectedRange),
+          );
+          trailPositions[i + 2] = 0;
+          trailCount++;
+          lastTrailX = b.x;
+          trailGeometry.attributes.position.needsUpdate = true;
+          trailGeometry.setDrawRange(0, trailCount);
+        }
+        landingMarker.visible = !!b && b.completed > 0;
+        if (b)
+          landingMarker.position.set(
+            origin + b.lastRange * flightScale,
+            0.025,
+            0,
+          );
+        predictionLine.visible = hasAbility(s, "rangefinder") && !!b;
+      } else {
+        flightTrail.visible = false;
+        trailOutline.visible = false;
+        trailDots.visible = false;
+        projectileHalo.visible = false;
+        predictionLine.visible = false;
+        landingMarker.visible = false;
       }
       if (view.current !== lastView) {
         lastView = view.current;
-        camera.position.set(
-          lastView ? 3.6 : 4.4,
-          lastView ? 2.1 : 2.9,
-          lastView ? 4.3 : 6.5,
-        );
-        controls.target.set(lastView ? 0.3 : 1, 1.15, 0);
+        if (ballistics && !lastView) {
+          camera.position.copy(rangeCamera);
+          controls.target.copy(rangeTarget);
+        } else {
+          camera.position.set(
+            lastView ? 3.6 : 4.4,
+            lastView ? 2.1 : 2.9,
+            lastView ? 4.3 : 6.5,
+          );
+          controls.target.set(lastView ? 0.3 : 1, 1.15, 0);
+        }
       }
       controls.update();
       renderer.render(scene, camera);
@@ -571,6 +1003,12 @@ export default function World({
       ro.disconnect();
       controls.dispose();
       collect(scene);
+      trailGeometry.dispose();
+      (flightTrail.material as THREE.Material).dispose();
+      (trailOutline.material as THREE.Material).dispose();
+      (trailDots.material as THREE.Material).dispose();
+      predictionLine.geometry.dispose();
+      (predictionLine.material as THREE.Material).dispose();
       geometries.forEach((g) => g.dispose());
       materials.forEach((m) => m.dispose());
       for (const f of foliage) f.mesh.dispose();

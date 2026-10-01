@@ -1,118 +1,218 @@
 import { useEffect, useRef, useState } from "react";
 import { equipmentUnlocked, totalTrials, type Save } from "./game";
+import { NODE_MAP, PROGRAMS } from "./research";
+type StoryDefinition = {
+  tag: string;
+  title: string;
+  pages: [string, string][];
+  button: string;
+};
 export const STORIES = {
   intro: {
-    tag: "An unsolicited research proposal",
-    title: "The clocks stopped at 08:03.",
+    tag: "Motion Laboratory",
+    title: "The lab needs a new record.",
     pages: [
       [
         "DR. ELLIS",
-        "Every clock in town stopped. The kettle stopped boiling. Even the dean stopped complaining. Briefly, we thought things had improved.",
+        "The Velocity Prize funds research into faster travel. We need a working experiment to enter. Our first prototype is me, in running shoes. The budget meeting was short.",
       ],
       [
         "UNKNOWN VISITOR",
-        "Your inertia engine has misplaced Tuesday. I can fix that. Probably. First I need motion data. Your budget covers one scientist and two shoes. Guess who's the vehicle.",
+        "Measure distance, speed and fatigue. Use the data to improve your next attempt. I used to hold the record. You can call me SANIK.",
       ],
       [
         "DR. ELLIS",
-        "Start a run. Collect data. Improve one thing. Repeat. We won't reach the forest immediately; that last hill is vicious. The visitor calls himself SANIK. He is a hedgehog. HR has questions.",
+        "We'll start with a run to the edge of town. Every attempt earns research points. If I tire out, the data still counts. First, let's choose a starting pace.",
       ],
     ],
-    button: "For science. Apparently.",
+    button: "Prepare the first test",
   },
   forest: {
-    tag: "Field transmission · 100 m",
-    title: "The pavement gives up.",
+    tag: "Route milestone · 100 m",
+    title: "Into Lanternwood.",
     pages: [
       [
-        "SANIK",
-        "You made it! Trees: nature's crash barriers. This trail asks more of your legs. The finish button shows exactly how many RP you'll keep. Exhaustion banks them too. I have negotiated this with the trees.",
+        "DR. ELLIS",
+        "The forest path is narrower and rougher than the city road. Watch stamina and switch to Recover when you need energy. Finish banks the RP shown on the right; exhaustion banks it too.",
       ],
     ],
-    button: "Keep moving",
+    button: "Continue the run",
   },
   research: {
     tag: "The first field report",
-    title: "A breakthrough. Also a blister.",
+    title: "One test. One improvement.",
     pages: [
       [
         "DR. ELLIS",
-        "A proper warm-up gives us 25% more stamina. Better running shoes give us 15% more top speed. Gather enough data for one improvement. Which problem should we solve first?",
+        "RP pays for permanent research. The first upgrades cost 15 RP each: a proper warm-up for 25% more stamina, or running-shoe research for 15% more top speed. Save enough for one, then test it on the next run before buying more.",
       ],
       [
         "SANIK",
-        "Both are permanent. When you can afford one, pick it, run again, and see what changed. More paths open as you learn. Your legs also gain XP during every run. Mine gained a parking ticket.",
+        "Running also earns Endurance, the runner program's research currency, and XP. Levels improve your base fitness. Pick an upgrade for the problem you noticed on the road. My advice: keep both shoes.",
       ],
     ],
-    button: "Inspect the research desk",
+    button: "Choose the first discovery",
   },
   equipment: {
-    tag: "An unexpected find",
-    title: "Someone left science on the road.",
+    tag: "Equipment recovered",
+    title: "A useful field find.",
     pages: [
       [
-        "SANIK",
-        "A piece of equipment! Ordinary finds have one small bonus. Rarer ones do several useful things at once. Travel further to improve your odds, or just be offensively lucky.",
+        "DR. ELLIS",
+        "Equip finds before the next experiment. Each slot holds one item. Common gear has one modest bonus; rarer pieces can have several. Longer runs improve rarity odds, but a lucky find can appear early.",
       ],
       [
-        "DR. ELLIS",
-        "Fit one piece in each slot between runs. Your shoes, outfit and accessory show up on the scientist. Please stop calling the abandoned coat a 'legendary torso'.",
+        "SANIK",
+        "Runner shoes and outfits are visible on Ellis. Research stays active permanently; equipment only helps while fitted. We should probably wash the coat first.",
       ],
     ],
-    button: "Noted. Legendary torso.",
+    button: "Check the equipment",
   },
   distance: {
-    tag: "Field transmission · 1 km",
-    title: "The visitor keeps catching up.",
+    tag: "Route milestone · 1 km",
+    title: "A kilometre of evidence.",
     pages: [
       [
         "DR. ELLIS",
-        "SANIK arrived before us. On foot. He claims the orange scarf is 'aerodynamic paperwork'. The quills are apparently a comb-over. We are investigating.",
+        "We've reached the country road. The projectile program becomes available after enough total distance and four runner discoveries. Its first experiment is a hand-thrown rock.",
       ],
       [
         "SANIK",
-        "Running is only the beginning. First, prove the lab can finish a kilometre and make a few discoveries. Then we'll discuss throwing things. Ideally things with no employment contract.",
+        "The prize accepts any moving object. Nobody said the scientist had to be attached to it.",
       ],
     ],
-    button: "More research required",
+    button: "Continue",
   },
   programs: {
-    tag: "A broader interpretation of movement",
-    title: "The scientist may now sit down.",
-    pages: [
-      [
-        "SANIK",
-        "Other ways to move! Your unlocked programs have their own buttons and currencies. Each keeps its research and equipment. I'm told wheels are an excellent invention. Personally, I find them a little... leisurely.",
-      ],
-    ],
-    button: "Expand the experiment",
-  },
-  far: {
-    tag: "Classified transmission · 10 km",
-    title: "S.A.N.I.K.",
+    tag: "New research program",
+    title: "Choose the next experiment.",
     pages: [
       [
         "DR. ELLIS",
-        "The visitor crossed ten kilometres while my stopwatch was blinking. Asked how, he said: 'Suspiciously Agile, Non-disclosed Independent Kineticist.' That is not a qualification.",
+        "Choose an unlocked program in the preparation popup before each experiment. Runner research uses Endurance, projectiles use Impulse, and wheels use Torque. RP is shared between programs.",
       ],
-      ["SANIK", "The scarf stays on. Tuesday is getting closer. Keep going."],
+      [
+        "SANIK",
+        "A projectile experiment launches six shots from a fixed station. Each landing earns RP and Impulse. Improve launch speed, drag and trajectory; there is no stamina bar for a rock.",
+      ],
     ],
-    button: "Chase the answer",
+    button: "Prepare an experiment",
   },
+  far: {
+    tag: "Route milestone · 10 km",
+    title: "A serious contender.",
+    pages: [
+      [
+        "DR. ELLIS",
+        "Ten kilometres. The desert route adds heat and stronger stamina demands. Heat-acclimation research reduces the desert's extra drain. We finally have a result worth showing the prize committee.",
+      ],
+      ["SANIK", "Good. Now they'll have to read our application."],
+    ],
+    button: "Continue",
+  },
+} satisfies Record<string, StoryDefinition>;
+export type StoryId = keyof typeof STORIES | `skill:${string}`;
+/** Explain future purchases without interrupting old saves with a backlog. */
+export function initializeSkillGuides(save: Save): Save {
+  const marker = "skill-guides-v1";
+  if (save.storySeen.includes(marker)) return save;
+  const existing = save.researched
+    .filter((id) => NODE_MAP.get(id)?.ability)
+    .map((id) => "skill:" + id);
+  return {
+    ...save,
+    storySeen: [...new Set([...save.storySeen, marker, ...existing])],
+  };
+}
+const SKILL_GUIDANCE: Record<string, string> = {
+  "second-wind":
+    "Automatic, once per run. When stamina falls below 25%, stay at Steady to recover energy during the 12-second window. Push and Recover do not receive this extra recovery.",
+  trailcraft:
+    "Automatic on rough route sections. No new button: your running technique reduces their extra stamina cost.",
+  "rolling-start":
+    "Automatic at the beginning of each run. You start at half cruising speed.",
+  shortcut:
+    "Choose the fast route when a detour offers it. Its speed bonus remains, with no extra stamina cost.",
+  "negative-split":
+    "Automatic after travelling 1 km in one run. Your cruising speed increases by another 15%.",
+  heat: "Automatic in the desert. It halves the desert's extra stamina penalty.",
+  hydration:
+    "When field supplies are available, Use supply restores an additional 10% of capacity and recharges 15 seconds sooner.",
+  survey:
+    "Automatic on entering a new biome. Each new biome adds 5 RP to the amount shown beside Finish.",
+  supplies:
+    "Three supplies are available each runner or vehicle experiment. Press Use supply to restore energy, then wait for its cooldown before using another.",
+  "angle-control":
+    "Set Launch angle in preparation or during an experiment, from 20° to 65°. A change applies to the next shot. Watch the landing distance to compare angles.",
+  "skip-shot":
+    "Automatic for hand-thrown rocks. The projectile can bounce once on landing at 40% of its remaining forward speed.",
+  "charged-launch":
+    "Automatic for launchers. Every third shot gets 18% more launch speed, with 1.5 seconds of extra preparation.",
+  rangefinder:
+    "Predicted range appears in the ballistics readout. Change the launch angle and compare the estimate with the actual landing.",
 };
-export type StoryId = keyof typeof STORIES;
+export function storyDefinition(id: StoryId, game: Save): StoryDefinition {
+  if (id === "programs") {
+    const currencies = game.unlocked
+      .map((p) => PROGRAMS[p].short + ": " + PROGRAMS[p].currency)
+      .join(" · ");
+    return {
+      ...STORIES.programs,
+      pages: [
+        [
+          "DR. ELLIS",
+          "Choose an unlocked program in preparation before each experiment. RP is shared. Each program also earns its own research currency: " +
+            currencies +
+            ".",
+        ],
+        [
+          "SANIK",
+          game.unlocked.includes("projectile")
+            ? "A projectile experiment launches six shots from a fixed station. Each landing earns RP and Impulse. Improve launch speed, drag and trajectory; a rock doesn't need stamina."
+            : "Each program keeps its own research and training. Choose the experiment you want to improve next.",
+        ],
+      ],
+    };
+  }
+  if (!id.startsWith("skill:")) return STORIES[id as keyof typeof STORIES];
+  const node = NODE_MAP.get(id.slice(6));
+  return {
+    tag: "Field skill unlocked",
+    title: node?.name ?? "New field skill",
+    pages: [
+      ["DR. ELLIS", node?.description ?? ""],
+      [
+        "FIELD NOTES",
+        SKILL_GUIDANCE[node?.ability ?? ""] ??
+          "This effect applies automatically during experiments in this research program.",
+      ],
+    ],
+    button: "Understood",
+  };
+}
 export function nextStory(s: Save, tab: string): StoryId | null {
   if (!s.tipsEnabled) return null;
   const seen = (id: StoryId) => s.storySeen.includes(id);
   if (!seen("intro")) return "intro";
   if (tab === "research" && totalTrials(s) > 0 && !seen("research"))
     return "research";
+  for (const id of s.researched) {
+    const node = NODE_MAP.get(id),
+      story = ("skill:" + id) as StoryId;
+    if (
+      node?.ability &&
+      (node.program === s.program || node.program === "global") &&
+      !seen(story)
+    )
+      return story;
+  }
   if (equipmentUnlocked(s) && s.inventory.length && !seen("equipment"))
     return "equipment";
   if (s.unlocked.length > 1 && !seen("programs")) return "programs";
+  // Distance milestones describe the running route, not a thrown object.
   const reach = Math.max(
-    s.trial?.distance ?? 0,
-    ...Object.values(s.progress).map((p) => p.bestDistance),
+    s.program === "runner" ? (s.trial?.distance ?? 0) : 0,
+    s.progress.runner.bestDistance,
   );
   if (reach >= 100 && !seen("forest")) return "forest";
   if (reach >= 1000 && !seen("distance")) return "distance";
@@ -235,7 +335,7 @@ export function SanikPortrait({ anonymous = false }: { anonymous?: boolean }) {
         fontSize="10"
         letterSpacing="3"
       >
-        FAST. VAGUE. PROBABLY QUALIFIED.
+        MOTION LABORATORY
       </text>
     </svg>
   );
@@ -244,14 +344,16 @@ export default function Story({
   id,
   onDone,
   onSkip,
+  game,
 }: {
   id: StoryId;
+  game: Save;
   onDone: () => void;
   onSkip: () => void;
 }) {
   const [page, setPage] = useState(0);
   const ref = useRef<HTMLDialogElement>(null);
-  const story = STORIES[id];
+  const story = storyDefinition(id, game);
   useEffect(() => {
     ref.current?.showModal();
     return () => ref.current?.close();
@@ -276,7 +378,7 @@ export default function Story({
         <span>
           {id === "intro" && page < 2
             ? "UNIDENTIFIED / VERY FAST"
-            : "PROJECT / LOST TUESDAY"}
+            : "VELOCITY PRIZE"}
         </span>
       </div>
       <div className="story-copy">
@@ -299,7 +401,7 @@ export default function Story({
           {page + 1 < story.pages.length ? "Go on →" : story.button}
         </button>
         <button className="text-button" onClick={onSkip}>
-          Skip story tips
+          Turn off story tips
         </button>
       </div>
     </dialog>

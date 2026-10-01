@@ -204,37 +204,66 @@ describe("distance-based expeditions", () => {
   });
 });
 describe("nonlinear research web", () => {
-  it("contains 108 unique discoveries and real branching, OR gates and hybrid AND gates", () => {
+  it("contains 108 unique discoveries with specialization pairs and shared junctions", () => {
     expect(NODES).toHaveLength(108);
     expect(new Set(NODES.map((n) => n.id)).size).toBe(108);
     expect(NODES.filter((n) => n.anyOf?.length).length).toBeGreaterThan(15);
-    expect(NODES.filter((n) => n.requires.length > 1).length).toBeGreaterThan(
-      20,
+    expect(new Set(NODES.map((n) => n.choiceGroup).filter(Boolean)).size).toBe(
+      9,
     );
   });
-  it("requires both parents for hybrids but either parent for alternate routes", () => {
+  it("closes the other specialization while keeping shared discoveries reachable", () => {
     let s = fresh();
     s.science = 1e8;
     s.progress.runner.funds = 1e8;
     s.researched = ["runner-0-2"];
-    expect(available(s, "runner-0-3")).toBe(false);
-    s.researched.push("runner-0-1");
     expect(available(s, "runner-0-3")).toBe(true);
+    s.researched = ["runner-0-0", "runner-0-1"];
+    expect(available(s, "runner-0-2")).toBe(false);
+    expect(research(s, "runner-0-2")).toBe(s);
+    expect(available(s, "runner-0-3")).toBe(true);
+    expect(available(s, "runner-0-4")).toBe(true);
+    expect(available(s, "runner-0-5")).toBe(false);
     s.researched = ["runner-0-4"];
     expect(available(s, "runner-0-6")).toBe(true);
     s.researched = ["runner-0-3"];
     expect(available(s, "runner-0-6")).toBe(true);
   });
-  it("all nodes are reachable without cycles or missing references", () => {
-    let s = fresh();
-    s.science = 1e9;
-    s.unlocked = ["runner", "projectile", "wheels"];
-    s.progress.runner.trials = 10;
-    s.progress.runner.bestDistance = 1000;
-    Object.values(s.progress).forEach((p) => (p.funds = 1e9));
-    for (let pass = 0; pass < 20; pass++)
-      for (const n of NODES) s = research(s, n.id);
-    expect(s.researched).toHaveLength(108);
+  it("reaches every discovery across valid choices, with no impossible conjunctions", () => {
+    const groups = [
+      ...new Set(
+        NODES.map((n) => n.choiceGroup).filter(
+          (group): group is string => !!group,
+        ),
+      ),
+    ];
+    const reachable = new Set<string>();
+    // Test every combination, not a save that cheats by owning both branches.
+    for (let mask = 0; mask < 2 ** groups.length; mask++) {
+      let s = fresh();
+      s.science = 1e9;
+      s.unlocked = ["runner", "projectile", "wheels"];
+      s.progress.runner.trials = 10;
+      s.progress.runner.bestDistance = 1000;
+      Object.values(s.progress).forEach((p) => (p.funds = 1e9));
+      const choices = new Set(
+        groups.map(
+          (group, index) =>
+            NODES.filter((n) => n.choiceGroup === group)[(mask >> index) & 1]
+              .id,
+        ),
+      );
+      for (let pass = 0; pass < 12; pass++)
+        for (const n of NODES)
+          if (!n.choiceGroup || choices.has(n.id)) s = research(s, n.id);
+      expect(s.researched).toHaveLength(90);
+      s.researched.forEach((id) => reachable.add(id));
+      for (const group of groups)
+        expect(
+          s.researched.filter((id) => NODE_MAP.get(id)?.choiceGroup === group),
+        ).toHaveLength(1);
+    }
+    expect(reachable.size).toBe(NODES.length);
     for (const n of NODES)
       for (const id of [...n.requires, ...(n.anyOf ?? [])])
         expect(NODE_MAP.has(id)).toBe(true);

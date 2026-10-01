@@ -104,22 +104,26 @@ export default function Records({
             [
               "01",
               "Run the experiment",
-              "Expeditions last until stamina runs out, or you choose to finish. A new runner can travel for several minutes. Every 100 metres earns resources; every 15 seconds earns experience.",
+              "Choose your experiment and equipment before starting. Running ends when stamina runs out or you finish. XP grows during the run. The finish button shows the RP you will keep.",
             ],
             [
               "02",
               "Manage the journey",
-              "Sustainable pace conserves energy. Push hard goes faster but drains stamina. Walk to recover and make route decisions. Field logistics research unlocks supplies later. Fatigue gradually reduces recoverable capacity.",
+              "Steady balances speed and stamina. Push is faster and uses more energy. Recover restores energy at a slower pace. Rough surfaces slow you down, so acceleration helps you regain speed afterwards.",
             ],
             [
               "03",
               "Follow your curiosity",
-              "Research is shared. Endurance, Impulse and Torque belong to their own programs. Every discovery is permanent. Follow alternate paths and combine disciplines for hybrid discoveries. Find equipment during runs and equip one piece per slot in the Equipment menu.",
+              "Research Points fund discoveries. Each experiment also earns its own training currency. Discoveries stay active permanently. Some specializations exclude another approach; compare their benefits and drawbacks before buying.",
             ],
             [
               "04",
-              "Build something unreasonable",
-              "Projectile research appears after three runs, a 1 km personal best, four runner discoveries and 1.5 km total travel. Open it for 220 RP. Wheels follow after six runs, the projectile program and 6 km total travel, for 600 RP. Choose unlocked vehicles between runs. Rare finds become more likely further along the road.",
+              game.unlocked.includes("projectile")
+                ? "Test projectile flight"
+                : "Reach further",
+              game.unlocked.includes("projectile")
+                ? "A projectile experiment launches six shots. Choose the angle before starting; only landed shots earn RP and Impulse. Compare range, launch speed and flight behavior when choosing upgrades."
+                : "Build stamina and running technique to pass the forest boundary. Longer runs produce more data. New experiments and equipment appear as you reach their milestones.",
             ],
           ].map(([num, title, desc]) => (
             <article key={num}>

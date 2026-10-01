@@ -129,14 +129,35 @@ describe("continuous biomes and readable research map", () => {
         }
     }
   });
-  it("offers ten functional stats and individually named discoveries", () => {
-    expect(Object.keys(STAT_LABELS)).toHaveLength(10);
+  it("offers separate running and ballistic stats with individually named discoveries", () => {
+    expect(Object.keys(STAT_LABELS)).toHaveLength(16);
     expect(new Set(NODES.map((n) => n.name)).size).toBe(NODES.length);
     const used = new Set(NODES.flatMap((n) => Object.keys(n.effects)));
-    expect(used.size).toBe(10);
+    expect(used.size).toBe(16);
     expect(
       NODES.filter((n) => Object.keys(n.effects).length > 1).length,
-    ).toBeGreaterThan(70);
+    ).toBeGreaterThan(65);
+    const projectile = NODES.filter((n) => n.program === "projectile");
+    for (const n of projectile)
+      expect(
+        Object.keys(n.effects).every((stat) =>
+          [
+            "launchSpeed",
+            "drag",
+            "lift",
+            "stability",
+            "reload",
+            "payload",
+            "yield",
+            "xp",
+            "luck",
+          ].includes(stat),
+        ),
+      ).toBe(true);
+    const pairs = NODES.filter((n) => n.choiceGroup);
+    expect(
+      pairs.every((n) => Object.values(n.effects).some((value) => value! < 0)),
+    ).toBe(true);
   });
 });
 describe("progressive story", () => {

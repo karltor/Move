@@ -12,6 +12,24 @@ import {
   equipmentUnlocked,
 } from "./game";
 describe("equipment drops and progressive features", () => {
+  it("gives projectile equipment flight bonuses instead of runner stamina", () => {
+    const flight = new Set([
+      "launchSpeed",
+      "drag",
+      "lift",
+      "stability",
+      "reload",
+      "payload",
+      "yield",
+      "xp",
+    ]);
+    for (let seed = 1; seed < 300; seed++) {
+      const { gear } = rollGear("projectile", 1000, seed, seed);
+      expect(gear.affixes.every((a) => flight.has(a.stat))).toBe(true);
+      expect(gear.name).not.toMatch(/shoe|jacket|trainer|vest|boot/i);
+      expect(validateGear([gear])).toEqual([gear]);
+    }
+  });
   it("starts with no supplies, equipment, or automation", () => {
     const s = start(fresh(), 10);
     expect(s.trial!.rations).toBe(0);

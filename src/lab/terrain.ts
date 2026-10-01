@@ -1,5 +1,13 @@
 import * as THREE from "three";
-import { biomeBlend, BIOMES } from "./game";
+import { biomeBlend, BIOMES, routeSegment } from "./game";
+
+/** Surface patches share the simulation's route coordinates and never move vertically. */
+export function roughPatch(distance: number) {
+  const segment = routeSegment(Math.max(0, distance));
+  if (segment.kind !== "effort") return 0;
+  const edge = Math.min(segment.phase / 0.12, (1 - segment.phase) / 0.12, 1);
+  return edge * edge * (3 - 2 * edge);
+}
 
 /** Ground is evaluated along the route, not recoloured all at once at a boundary. */
 export function routeSurface(distance: number) {
@@ -24,6 +32,7 @@ export function createTerrain() {
   const positions = new Float32Array(rows * columns * 3);
   const colors = new Float32Array(rows * columns * 3);
   const surface = new Float32Array(rows * columns);
+  const patches = new Float32Array(rows * columns);
   const normals = new Float32Array(rows * columns * 3);
   const indices: number[] = [];
   for (let i = 0; i < rows; i++)
@@ -45,6 +54,7 @@ export function createTerrain() {
   geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
   geometry.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
   geometry.setAttribute("surface", new THREE.BufferAttribute(surface, 1));
+  geometry.setAttribute("surfacePatch", new THREE.BufferAttribute(patches, 1));
   geometry.setIndex(indices);
   const travel = { value: 0 };
   // A repeating mipmapped texture stays stable in motion and at oblique angles.
@@ -72,15 +82,15 @@ export function createTerrain() {
     shader.uniforms.routeTravel = travel;
     shader.uniforms.routeGrain = { value: grainTexture };
     shader.vertexShader =
-      `attribute float surface; varying float vSurface; varying vec2 vGround; uniform float routeTravel;\n` +
+      `attribute float surface; attribute float surfacePatch; varying float vSurface; varying float vPatch; varying vec2 vGround; uniform float routeTravel;\n` +
       shader.vertexShader;
     shader.vertexShader = shader.vertexShader.replace(
       "#include <begin_vertex>",
       `#include <begin_vertex>
-      vSurface = surface; vGround = vec2(position.x + routeTravel, position.z);`,
+      vSurface = surface; vPatch = surfacePatch; vGround = vec2(position.x + routeTravel, position.z);`,
     );
     shader.fragmentShader =
-      `varying float vSurface; varying vec2 vGround; uniform sampler2D routeGrain;
+      `varying float vSurface; varying float vPatch; varying vec2 vGround; uniform sampler2D routeGrain;
       \n` + shader.fragmentShader;
     shader.fragmentShader = shader.fragmentShader.replace(
       "#include <color_fragment>",
@@ -95,12 +105,30 @@ export function createTerrain() {
       vec2 slabs = abs(fract(vGround*vec2(1.3,1.8))-.5);
       float joint = max(smoothstep(.475,.49,slabs.x),smoothstep(.475,.49,slabs.y));
       grain *= 1.0-paving*joint*.20;
-      diffuseColor.rgb *= grain;`,
+      float chips = smoothstep(.60,.77,coarse) * smoothstep(.70,.83,fine);
+      float cracks = 1.0-smoothstep(.015,.045,abs(sin(vGround.x*1.7+sin(vGround.y*4.0))));
+      grain *= 1.0-vPatch*(chips*.25+cracks*.32);
+      diffuseColor.rgb *= grain;
+      diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb*vec3(1.13,1.02,.84),vPatch*.45);`,
     );
   };
   const mesh = new THREE.Mesh(geometry, material);
   mesh.receiveShadow = true;
   mesh.frustumCulled = false;
+  const cones = new THREE.InstancedMesh(
+    new THREE.ConeGeometry(0.13, 0.44, 16),
+    new THREE.MeshStandardMaterial({ color: "#e77732", roughness: 0.8 }),
+    6,
+  );
+  const coneBases = new THREE.InstancedMesh(
+    new THREE.BoxGeometry(0.32, 0.045, 0.32),
+    new THREE.MeshStandardMaterial({ color: "#36424a", roughness: 0.9 }),
+    6,
+  );
+  cones.castShadow = true;
+  cones.frustumCulled = coneBases.frustumCulled = false;
+  mesh.add(cones, coneBases);
+  const markerMatrix = new THREE.Matrix4();
   const asphalt = new THREE.Color("#616866"),
     gravel = new THREE.Color("#b1a083"),
     pavement = new THREE.Color("#b7b3a4"),
@@ -116,10 +144,21 @@ export function createTerrain() {
     travel.value = origin;
     if (origin === lastOrigin) return;
     lastOrigin = origin;
+    for (let i = 0; i < 6; i++) {
+      const markerX = (38 + Math.floor(i / 2) * 14) * 0.65 - origin;
+      const markerZ = i % 2 ? 2.2 : -2.2;
+      markerMatrix.makeTranslation(markerX, 0.23, markerZ);
+      cones.setMatrixAt(i, markerMatrix);
+      markerMatrix.makeTranslation(markerX, 0.028, markerZ);
+      coneBases.setMatrixAt(i, markerMatrix);
+    }
+    cones.instanceMatrix.needsUpdate =
+      coneBases.instanceMatrix.needsUpdate = true;
     for (let i = 0; i < rows; i++) {
       const x = i - 80,
         actual = (origin + x) / 0.65;
       const s = routeSurface(actual);
+      const patch = roughPatch(actual);
       grass
         .set(BIOMES[s.b.from].color)
         .lerp(new THREE.Color(BIOMES[s.b.to].color), s.b.mix);
@@ -155,11 +194,13 @@ export function createTerrain() {
         colors[k * 3 + 1] = c.g;
         colors[k * 3 + 2] = c.b;
         surface[k] = inside ? s.forest : rim ? 1 : 2 + s.city;
+        patches[k] = inside ? patch : 0;
       }
     }
     geometry.attributes.position.needsUpdate = true;
     geometry.attributes.color.needsUpdate = true;
     geometry.attributes.surface.needsUpdate = true;
+    geometry.attributes.surfacePatch.needsUpdate = true;
   }
   update(0);
   return { mesh, update };

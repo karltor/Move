@@ -1,5 +1,14 @@
 import { rollGear, random, validateGear, type Gear } from "./equipment";
 import {
+  advanceFlight,
+  initialBallistic,
+  launchFlight,
+  predictFlight,
+  SHOTS_PER_TRIAL,
+  type BallisticState,
+  type FlightConfig,
+} from "./ballistics";
+import {
   NODES,
   NODE_MAP,
   PROGRAMS,
@@ -37,6 +46,9 @@ export interface Trial {
   drops: string[];
   secondWind: number;
   usedSecondWind: boolean;
+  ballistic?: BallisticState;
+  lastEvent?: number;
+  routeTime?: number;
 }
 export interface Result {
   id: number;
@@ -62,6 +74,7 @@ export interface Save {
   lastDrop: string | null;
   auto: boolean;
   pace: "steady" | "push" | "recover";
+  launchAngle: number;
   trial: Trial | null;
   rest: number;
   history: Result[];
@@ -186,6 +199,7 @@ export function fresh(): Save {
     lastDrop: null,
     auto: false,
     pace: "steady",
+    launchAngle: 45,
     trial: null,
     rest: 0,
     history: [],
@@ -210,6 +224,12 @@ export function stats(s: Save, p = s.program) {
     resilience: 1,
     wind: 1,
     luck: 1,
+    launchSpeed: 1,
+    drag: 1,
+    lift: 1,
+    stability: 1,
+    reload: 1,
+    payload: 1,
   };
   for (const id of s.researched) {
     const n = NODE_MAP.get(id);
@@ -223,8 +243,13 @@ export function stats(s: Save, p = s.program) {
       for (const affix of item.affixes) out[affix.stat] += affix.value;
   }
   const lv = level(s.progress[p].xp);
-  out.stamina += (lv - 1) * 0.08;
-  out.speed += (lv - 1) * 0.03;
+  if (p === "projectile") {
+    out.launchSpeed += (lv - 1) * 0.025;
+    out.stability += (lv - 1) * 0.03;
+  } else {
+    out.stamina += (lv - 1) * 0.08;
+    out.speed += (lv - 1) * 0.03;
+  }
   return out;
 }
 export const totalTrials = (s: Save) =>
@@ -264,31 +289,44 @@ export function frontierPressure(distance: number) {
   return Math.pow(2.2, index) * (1 + 5 * Math.pow(u, 3));
 }
 
-/** Repeating road efforts create useful acceleration and pace decisions every run. */
-export function routeChallenge(s: Save) {
-  const d = s.trial?.distance ?? 0,
-    bio = biomeAt(d),
+/** Shared by the actual surface patches and their movement effects. */
+export function routeSegment(d: number) {
+  const bio = biomeAt(d),
     region = BIOMES.indexOf(bio);
   const length = region === 0 ? 36 : 60 + region * 20;
   const segment = Math.floor(d / length),
     phase = (d % length) / length;
   const kind = segment % 3;
+  return {
+    kind: (kind === 1 ? "effort" : kind === 2 ? "recovery" : "easy") as
+      "easy" | "effort" | "recovery",
+    phase,
+    region,
+    length,
+  };
+}
+/** Rough paving/trail slows movement; there are no invisible hills. */
+export function routeChallenge(s: Save) {
+  const d = s.trial?.distance ?? 0;
+  const { kind: segmentKind, phase, region, length } = routeSegment(d);
+  const kind =
+    segmentKind === "effort" ? 1 : segmentKind === "recovery" ? 2 : 0;
   const effort = kind === 1,
     recovery = kind === 2;
   const names =
     region === 0
-      ? ["Open pavement", "The uphill block", "Downhill stretch"]
+      ? ["Open pavement", "Roadworks", "Smooth pavement"]
       : region === 1
-        ? ["Firm trail", "Root-covered climb", "Sheltered descent"]
-        : ["Open stretch", "Headwind climb", "Sheltered stretch"];
+        ? ["Firm trail", "Rough trail", "Packed gravel"]
+        : ["Open road", "Broken surface", "Smooth road"];
   const pressure = frontierPressure(d);
   return {
     name: names[kind],
     description: effort
-      ? "The climb slows you down. Save energy here; acceleration rebuilds speed afterwards."
+      ? "Uneven footing: 38% slower, 25% extra energy use. Acceleration restores speed on smooth ground."
       : recovery
-        ? "An easier stretch. Recover stamina or use your remaining energy to push ahead."
-        : "Build your rhythm. The next stretch will ask more of your legs.",
+        ? "Smooth footing: 8% faster, 22% less energy use."
+        : "Normal footing. No surface penalty.",
     progress: phase,
     remaining: length - (d % length),
     difficulty: (effort ? "effort" : recovery ? "recovery" : "easy") as
@@ -308,6 +346,10 @@ export function available(s: Save, id: string) {
     !!n &&
     !firstDebriefComplete &&
     !s.researched.includes(id) &&
+    (!n.choiceGroup ||
+      !s.researched.some(
+        (owned) => NODE_MAP.get(owned)?.choiceGroup === n.choiceGroup,
+      )) &&
     n.requires.every((r) => s.researched.includes(r)) &&
     (!n.anyOf?.length || n.anyOf.some((r) => s.researched.includes(r))) &&
     (n.program === "global"
@@ -451,13 +493,19 @@ export function start(
           drops: [],
           secondWind: 0,
           usedSecondWind: false,
+          ...(s.program === "projectile"
+            ? { ballistic: initialBallistic() }
+            : {}),
         },
         notice:
-          "Expedition underway. Pace, supplies and route decisions determine your reach.",
+          s.program === "projectile"
+            ? "Six shots. Only landed shots earn RP and Impulse."
+            : "Experiment underway.",
       };
 }
 export function supply(s: Save): Save {
   if (
+    s.program === "projectile" ||
     !suppliesUnlocked(s) ||
     !s.trial ||
     s.trial.rations <= 0 ||
@@ -498,7 +546,7 @@ export const EVENTS = [
     a: "Collect the sample",
     ad: "+3 research at finish · +8 fatigue",
     b: "Keep moving",
-    bd: "+1 program currency · no detour",
+    bd: "+1 Endurance · no detour",
   },
   {
     title: "Field support station",
@@ -508,14 +556,56 @@ export const EVENTS = [
     b: "Press on",
     bd: "+2 research at finish · keep pace",
   },
+  {
+    title: "A delivery trolley",
+    text: "A trolley blocks the pavement. Go around it or slow down to pass?",
+    a: "Go around",
+    ad: "+6% speed · +12% energy use for 30s",
+    b: "Slow down and pass",
+    bd: "−6% speed · −8% energy use for 30s",
+  },
+  {
+    title: "Water from the support crew",
+    text: "The crew offers a cup at the roadside. A short stop restores some energy.",
+    a: "Stop for 4 seconds",
+    ad: "Restore 5% energy",
+    b: "Keep running",
+    bd: "+1 Endurance",
+  },
+  {
+    title: "A loose route marker",
+    text: "The marker has fallen over. Photograph it for the lab, or leave it to the crew?",
+    a: "Take a photograph",
+    ad: "+2 RP at finish · +3 fatigue",
+    b: "Leave it to the crew",
+    bd: "Keep pace",
+  },
 ];
+export function eventDetails(s: Save) {
+  const e = EVENTS[s.trial?.event ?? 0];
+  return {
+    ...e,
+    ad: e.ad.split("Endurance").join(PROGRAMS[s.program].currency),
+    bd: e.bd.split("Endurance").join(PROGRAMS[s.program].currency),
+  };
+}
 export function decide(s: Save, choice: "a" | "b"): Save {
   const t = s.trial;
   if (!t || t.event === null) return s;
-  const event = t.event % 3;
-  const next = { ...t, event: null, nextEvent: t.time + 45 };
+  const event = t.event;
+  const [delay, seed] = random(t.rng);
+  const next = {
+    ...t,
+    event: null,
+    lastEvent: event,
+    rng: seed,
+    nextEvent: t.time + 24 + delay * 24,
+  };
   let progress = s.progress;
-  if (event === 0) next.route = choice === "a" ? "shade" : "fast";
+  if (event === 0 || event === 3) {
+    next.route = choice === (event === 0 ? "a" : "b") ? "shade" : "fast";
+    next.routeTime = 30;
+  }
   if (event === 1) {
     if (choice === "a") {
       next.samples += 3;
@@ -539,6 +629,26 @@ export function decide(s: Save, choice: "a" | "b"): Save {
       );
     } else next.samples += 2;
   }
+  if (event === 4) {
+    if (choice === "a") {
+      next.restTime = 4;
+      next.energy = Math.min(
+        100 * stats(s).stamina - next.fatigue,
+        next.energy + 5 * stats(s).stamina,
+      );
+    } else
+      progress = {
+        ...progress,
+        [s.program]: {
+          ...progress[s.program],
+          funds: progress[s.program].funds + 1,
+        },
+      };
+  }
+  if (event === 5 && choice === "a") {
+    next.samples += 2;
+    next.fatigue += 3;
+  }
   return {
     ...s,
     trial: next,
@@ -550,6 +660,12 @@ export function pendingRewards(s: Save) {
   const t = s.trial,
     st = stats(s);
   if (!t) return { science: 0, funds: 0, xp: 0 };
+  if (s.program === "projectile")
+    return {
+      science: t.ballistic?.science ?? 0,
+      funds: t.ballistic?.funds ?? 0,
+      xp: 0,
+    };
   const survey = hasAbility(s, "survey")
     ? BIOMES.filter((b) => b.start > 0 && b.start <= t.distance).length * 5
     : 0;
@@ -609,8 +725,156 @@ export function finish(s: Save): Save {
       PROGRAMS[s.program].currency +
       " · +" +
       t.lastXP +
-      " XP earned along the route.",
+      (s.program === "projectile"
+        ? " XP from landed shots."
+        : " XP earned along the route."),
   };
+}
+export function projectilePhysics(s: Save): FlightConfig {
+  const variant = s.progress.projectile.variant;
+  const st = stats(s, "projectile");
+  const base =
+    variant === "plane"
+      ? 11
+      : variant === "sling"
+        ? 28
+        : variant === "cannon"
+          ? 70
+          : variant === "particle"
+            ? 400
+            : 12;
+  const angle = hasAbility(s, "angle-control")
+    ? s.launchAngle
+    : variant === "particle"
+      ? 2
+      : 45;
+  return {
+    speed: base * Math.max(0.2, st.launchSpeed) * Math.max(0.5, st.speed),
+    angle,
+    height:
+      variant === "sling"
+        ? 1.1
+        : variant === "particle"
+          ? 1
+          : variant === "cannon"
+            ? 0.8 + Math.hypot(1.6, 0.65) * Math.sin((angle * Math.PI) / 180)
+            : 1.45,
+    drag:
+      (variant === "plane"
+        ? 0.009
+        : variant === "cannon"
+          ? 0.0015
+          : variant === "particle"
+            ? 0.0008
+            : 0.0035) / Math.max(0.2, st.drag),
+    lift: variant === "plane" ? 0.03 * Math.max(0.2, st.lift) : 0,
+    reload:
+      (variant === "cannon" ? 5 : variant === "particle" ? 4 : 3) /
+      Math.max(0.25, st.reload),
+    charged: hasAbility(s, "charged-launch"),
+    skip: hasAbility(s, "skip-shot") && variant === "rock",
+  };
+}
+export function projectileFlight(s: Save) {
+  const b = s.trial?.ballistic;
+  return {
+    phase: b?.phase ?? "prepare",
+    x: b?.x ?? 0,
+    y: b?.y ?? 0,
+    completed: b?.completed ?? 0,
+    remaining: SHOTS_PER_TRIAL - (b?.completed ?? 0),
+    lastRange: b?.lastRange ?? 0,
+    angle:
+      b?.phase === "flight"
+        ? (b.config?.angle ?? projectilePhysics(s).angle)
+        : projectilePhysics(s).angle,
+    predicted: hasAbility(s, "rangefinder")
+      ? predictFlight(b?.config ?? projectilePhysics(s)).range
+      : null,
+  };
+}
+function stepProjectile(s: Save, dt: number): Save {
+  const t = { ...s.trial! },
+    config = projectilePhysics(s),
+    st = stats(s);
+  let b = { ...(t.ballistic ?? initialBallistic()) };
+  t.time += dt;
+  t.energy = 100;
+  t.fatigue = 0;
+  t.event = null;
+  let progress = s.progress,
+    next: Save = { ...s, trial: t };
+  if (b.phase === "prepare") {
+    b.phaseTime += dt;
+    const charge = config.charged && (b.shots + 1) % 3 === 0 ? 1.5 : 0;
+    if (b.phaseTime >= config.reload + charge) {
+      const [roll, seed] = random(t.rng);
+      t.rng = seed;
+      b = launchFlight(
+        b,
+        config,
+        ((roll - 0.5) * 8) / Math.max(0.2, st.stability),
+      );
+    }
+  } else if (b.phase === "flight") {
+    b = advanceFlight(b, dt, config);
+    t.speed = Math.hypot(b.vx, b.vy);
+    t.peak = Math.max(t.peak, t.speed);
+    if (b.phase === "landed") {
+      b.completed += 1;
+      b.lastRange = b.x;
+      b.totalRange += b.x;
+      t.distance = Math.max(t.distance, b.x);
+      b.science += Math.max(1, Math.floor(Math.sqrt(b.x) * 1.3 * st.yield));
+      b.funds += Math.max(1, Math.floor(Math.sqrt(b.x) * 0.35 * st.payload));
+      const earned = Math.max(1, Math.floor(Math.sqrt(b.x) * 0.7 * st.xp));
+      t.lastXP += earned;
+      progress = {
+        ...s.progress,
+        projectile: {
+          ...s.progress.projectile,
+          xp: s.progress.projectile.xp + earned,
+        },
+      };
+      b.phaseTime = 0;
+      if (equipmentUnlocked(s)) {
+        const [roll, seed] = random(t.rng);
+        t.rng = seed;
+        if (roll < Math.min(0.4, 0.1 * st.luck) && s.inventory.length < 90) {
+          const drop = rollGear("projectile", b.x, t.rng, s.nextGear, st.luck);
+          t.rng = drop.seed;
+          t.drops = [...t.drops, drop.gear.id];
+          next = {
+            ...next,
+            inventory: [...s.inventory, drop.gear],
+            nextGear: s.nextGear + 1,
+            lastDrop: drop.gear.id,
+          };
+        }
+      }
+    }
+  } else {
+    t.speed = 0;
+    b.phaseTime += dt;
+    if (b.phaseTime >= 1.1) {
+      if (b.completed >= SHOTS_PER_TRIAL) {
+        t.ballistic = b;
+        return finish({ ...next, progress, trial: t });
+      }
+      b = {
+        ...b,
+        phase: "prepare",
+        phaseTime: 0,
+        x: 0,
+        y: config.height,
+        vx: 0,
+        vy: 0,
+        config: undefined,
+      };
+    }
+  }
+  t.ballistic = b;
+  return { ...next, progress, trial: t };
 }
 export function step(s: Save, dt: number): Save {
   if (!Number.isFinite(dt) || dt <= 0) return s;
@@ -622,6 +886,7 @@ export function step(s: Save, dt: number): Save {
     }
     return s;
   }
+  if (s.program === "projectile") return stepProjectile(s, dt);
   const t = { ...s.trial };
   const st = stats(s);
   const bio = biomeAt(t.distance);
@@ -645,12 +910,25 @@ export function step(s: Save, dt: number): Save {
   t.secondWind = Math.max(0, (t.secondWind ?? 0) - dt);
   t.time += dt;
   t.supplyCooldown = Math.max(0, t.supplyCooldown - dt);
+  t.routeTime = Math.max(0, (t.routeTime ?? 0) - dt);
+  if (t.routeTime === 0) t.route = "normal";
   if (t.event !== null && t.time >= t.nextEvent + 15) {
     t.event = null;
-    t.nextEvent = t.time + 45;
+    t.lastEvent = s.trial.event ?? undefined;
+    const [delay, seed] = random(t.rng);
+    t.rng = seed;
+    t.nextEvent = t.time + 24 + delay * 24;
   }
-  if (totalTrials(s) >= 3 && t.event === null && t.time >= t.nextEvent)
-    t.event = Math.floor(t.time / 30) % 3;
+  if (totalTrials(s) >= 3 && t.event === null && t.time >= t.nextEvent) {
+    const [roll, seed] = random(t.rng);
+    t.rng = seed;
+    // Reproducible saves, varied expeditions, and no immediate repeated event.
+    const eligible = EVENTS.map((_, i) => i).filter(
+      (i) =>
+        i !== t.lastEvent && (biomeAt(t.distance).short === "City" || i !== 3),
+    );
+    t.event = eligible[Math.floor(roll * eligible.length)];
+  }
   const resting = t.restTime > 0;
   t.restTime = Math.max(0, t.restTime - dt);
   const maxEnergy = 100 * st.stamina - t.fatigue;
@@ -703,7 +981,7 @@ export function step(s: Save, dt: number): Save {
       challenge.speedMultiplier *
       (t.route === "shade" ? 0.94 : t.route === "fast" ? 1.06 : 1) *
       (t.energy < 20 ? 0.55 + (0.45 * t.energy) / 20 : 1);
-  // Braking responds quickly; rebuilding speed after climbs takes training.
+  // Braking responds quickly; rebuilding speed after rough paving takes training.
   t.speed +=
     (goal - t.speed) *
     (1 - Math.exp(-dt * (goal < t.speed ? 1.4 : 0.12 * st.acceleration)));
@@ -829,6 +1107,7 @@ export function restore(raw: string | null, now = Date.now()): Save {
     }
     s.auto = x.auto === true;
     s.pace = ["steady", "push", "recover"].includes(x.pace) ? x.pace : "steady";
+    s.launchAngle = Math.max(20, Math.min(65, number(x.launchAngle, 45)));
     s.history = Array.isArray(x.history)
       ? x.history
           .filter(
@@ -891,8 +1170,65 @@ export function restore(raw: string | null, now = Date.now()): Save {
         route: ["normal", "shade", "fast"].includes(x.trial.route)
           ? x.trial.route
           : "normal",
-        event: [0, 1, 2].includes(x.trial.event) ? x.trial.event : null,
+        event: EVENTS.map((_, i) => i).includes(x.trial.event)
+          ? x.trial.event
+          : null,
+        lastEvent: EVENTS.map((_, i) => i).includes(x.trial.lastEvent)
+          ? x.trial.lastEvent
+          : undefined,
+        routeTime: number(x.trial.routeTime),
       };
+      if (s.program === "projectile") {
+        const b = x.trial.ballistic;
+        const config = b?.config;
+        const validConfig =
+          !config ||
+          (["speed", "angle", "height", "drag", "lift", "reload"].every(
+            (key) =>
+              typeof config[key] === "number" &&
+              Number.isFinite(config[key]) &&
+              config[key] >= 0,
+          ) &&
+            config.angle <= 90 &&
+            config.speed > 0 &&
+            config.reload > 0 &&
+            typeof config.charged === "boolean" &&
+            typeof config.skip === "boolean");
+        const valid =
+          b &&
+          ["prepare", "flight", "landed"].includes(b.phase) &&
+          [
+            "phaseTime",
+            "x",
+            "y",
+            "vx",
+            "vy",
+            "shots",
+            "completed",
+            "lastRange",
+            "totalRange",
+            "science",
+            "funds",
+            "skips",
+          ].every(
+            (key) => typeof b[key] === "number" && Number.isFinite(b[key]),
+          ) &&
+          b.shots >= b.completed &&
+          b.shots <= SHOTS_PER_TRIAL &&
+          b.completed >= 0 &&
+          Number.isInteger(b.shots) &&
+          Number.isInteger(b.completed) &&
+          b.x >= 0 &&
+          b.y >= 0 &&
+          b.science >= 0 &&
+          b.funds >= 0 &&
+          b.phaseTime >= 0 &&
+          validConfig;
+        if (valid && s.trial) s.trial.ballistic = { ...b };
+        // Old projectile runs had no flights. Finish their runtime migration at
+        // the staging screen while preserving all banked progress.
+        else s.trial = null;
+      }
     }
     const elapsed = Math.min(
       7200,

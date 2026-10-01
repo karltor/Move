@@ -287,6 +287,83 @@
   border-left: 2px solid #aac7bb;
   padding-left: 10px;
 }
+.experiment-specialization {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 11px;
+  margin-bottom: 12px;
+  border: 1px solid #e5c69b;
+  border-radius: 6px;
+  background: #fff7e8;
+  color: #6d4a25;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.experiment-specialization b {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.specialization-note {
+  color: #79582c !important;
+}
+.research-choice {
+  margin-block: 14px;
+  padding: 12px;
+  border: 1px solid #ddc390;
+  background: #fff9eb;
+  border-radius: 8px;
+}
+.research-choice > b {
+  font-size: 11px;
+  color: #6d4a25;
+}
+.research-choice > p {
+  font-size: 11px;
+  margin: 6px 0 9px;
+  line-height: 1.5;
+}
+.research-choice > button {
+  text-align: left;
+  width: 100%;
+  background: #fff;
+  border: 1px solid #d7c7a7;
+  border-radius: 5px;
+  font-size: 11px;
+  padding: 8px;
+}
+.research-choice > button small {
+  display: block;
+  margin-top: 5px;
+  font-size: 10px;
+  color: #596b67;
+}
+.choice-closed {
+  background: #f1f2f2;
+  border-color: #cbd1d1;
+}
+.choice-closed > b {
+  color: #566262;
+}
+.discovery-effects .tradeoff-effect {
+  background: #fff0e5;
+  color: #865031;
+}
+.atlas-node.excluded {
+  color: #727a78;
+}
+.atlas-node.excluded .node-emblem {
+  background: #e6e9e7;
+  border-color: #aeb6b1;
+  box-shadow: none;
+}
+.atlas-node.excluded .node-emblem i {
+  background: #7d8881;
+}
+.atlas-node.excluded > small {
+  color: #68716b;
+}
 /* Keep the experiment and its purchase visible on shorter desktop windows. */
 @media (max-height: 760px) {
   .first-experiments {

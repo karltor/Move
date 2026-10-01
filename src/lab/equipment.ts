@@ -16,6 +16,22 @@ export const SLOT_NAMES = {
   outfit: "Outfit",
   instrument: "Instrument",
 };
+export function slotName(program: Program, slot: Slot) {
+  const names = {
+    runner: SLOT_NAMES,
+    projectile: {
+      footwear: "Launch rig",
+      outfit: "Projectile body",
+      instrument: "Measuring instrument",
+    },
+    wheels: {
+      footwear: "Wheels",
+      outfit: "Chassis",
+      instrument: "Control unit",
+    },
+  };
+  return names[program][slot];
+}
 export const STAT_NAMES = STAT_LABELS;
 export const RARITIES: Rarity[] = ["Common", "Uncommon", "Rare", "Epic"];
 // Saved per-expedition state keeps refreshes from rerolling a pending drop.
@@ -46,7 +62,7 @@ export function rollGear(
   const rarity = rarityAt(distance, next() / Math.max(1, luck));
   const tier = RARITIES.indexOf(rarity);
   const slot = SLOTS[Math.floor(next() * SLOTS.length)];
-  const baseNames = {
+  const runningNames = {
     footwear: [
       "Running shoes",
       "Track shoes",
@@ -61,20 +77,77 @@ export function rollGear(
       "Quantum compass",
     ],
   };
+  const baseNames =
+    program === "projectile"
+      ? {
+          footwear: [
+            "Throwing grip",
+            "Elastic launch cup",
+            "Calibrated launch rail",
+            "Magnetic launch cradle",
+          ],
+          outfit: [
+            "Balanced stone",
+            "Polished shell",
+            "Carbon flight body",
+            "Composite flight shell",
+          ],
+          instrument: [
+            "Range tape",
+            "Angle gauge",
+            "Optical tracker",
+            "Flight telemetry unit",
+          ],
+        }
+      : program === "wheels"
+        ? {
+            footwear: [
+              "Road tyres",
+              "Sealed bearings",
+              "Lightweight wheelset",
+              "Magnetic hubs",
+            ],
+            outfit: [
+              "Steel frame",
+              "Alloy frame",
+              "Carbon chassis",
+              "Streamlined monocoque",
+            ],
+            instrument: [
+              "Speedometer",
+              "Motor controller",
+              "Traction sensor",
+              "Adaptive control unit",
+            ],
+          }
+        : runningNames;
   const pool: Stat[] =
-    tier === 0
-      ? ["speed", "stamina", "yield", "xp"]
-      : [
-          "speed",
-          "stamina",
-          "yield",
-          "xp",
-          "acceleration",
-          "economy",
-          "recovery",
-          "resilience",
-          "luck",
-        ];
+    program === "projectile"
+      ? tier === 0
+        ? ["launchSpeed", "drag", "stability", "payload"]
+        : [
+            "launchSpeed",
+            "drag",
+            "lift",
+            "stability",
+            "reload",
+            "payload",
+            "yield",
+            "xp",
+          ]
+      : tier === 0
+        ? ["speed", "stamina", "yield", "xp"]
+        : [
+            "speed",
+            "stamina",
+            "yield",
+            "xp",
+            "acceleration",
+            "economy",
+            "recovery",
+            "resilience",
+            "luck",
+          ];
   const affixes = [];
   for (let i = 0; i <= tier; i++) {
     const [stat] = pool.splice(Math.floor(next() * pool.length), 1);

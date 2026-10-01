@@ -60,17 +60,39 @@ describe("first research decisions", () => {
     const both = [...owned, "runner-2-0"];
     expect(firstDiscoveries(both).map((n) => n.id)).toEqual([
       "runner-0-1",
+      "runner-0-2",
       "runner-1-0",
-      "runner-2-1",
     ]);
     expect(
-      beginnerResearch("runner", [...both, "runner-0-1", "runner-0-2"]),
+      beginnerResearch("runner", [...both, "runner-0-1", "runner-1-0"]),
     ).toBe(false);
     expect(beginnerResearch("projectile", [])).toBe(false);
     const s = { ...fresh(), researched: owned };
     expect(available(s, "runner-0-1")).toBe(true);
     expect(available(s, "runner-0-2")).toBe(true);
     expect(available(s, "runner-0-3")).toBe(false);
+  });
+
+  it("shows the complete specialization pair and names the permanent exclusion", () => {
+    const s = fresh();
+    s.progress.runner.trials = 2;
+    s.researched = ["runner-0-0"];
+    s.science = 100;
+    s.progress.runner.funds = 100;
+    const markup = renderToStaticMarkup(
+      createElement(FirstExperiments, {
+        game: s,
+        setGame: () => {},
+        onRun: () => {},
+      }),
+    );
+    expect(markup).toContain("Long, slow training");
+    expect(markup).toContain("Interval training");
+    expect(markup).toContain("Choosing this closes");
+    expect(markup).toContain("Choose one · permanent");
+    expect(markup).toContain("−5% cruising speed");
+    const choices = firstDiscoveries(["runner-0-0", "runner-0-1"]);
+    expect(choices.some((n) => n.id === "runner-0-2")).toBe(false);
   });
 
   it("keeps shared research gated even if a new player has enough money", () => {
