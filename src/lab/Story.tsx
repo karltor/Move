@@ -45,11 +45,11 @@ export const STORIES = {
     pages: [
       [
         "DR. ELLIS",
-        "Spend Talent Points on a new talent or another rank in a talent you already know. Select a node to see its next-rank effects and requirements. Follow a branch toward the abilities you want; its connecting lines show the route.",
+        "Start with six basic discoveries in three paths. Each costs one Talent Point. Learn any first talent to open the one below it. They improve different things: stamina, energy use, starts, grip, speed and fatigue.",
       ],
       [
         "SANIK",
-        "Some branches ask you to choose a specialization. Read the trade-off before committing: extra speed can cost more energy. New development eras add powered joints, engineered organs and much faster ways to move. We are allowed to get ambitious.",
+        "The training clinic needs four learned talents, three finished runs, a 120-metre record and 180 RP. Its checklist is below the paths. Build it to open new skills and repeatable training. First we learn to run; the questionable machinery comes later.",
       ],
     ],
     button: "Explore talents",
@@ -69,11 +69,11 @@ export const STORIES = {
     pages: [
       [
         "DR. ELLIS",
-        "The workshop sells basic gear for equipment vouchers. Fit one item in each slot, then upgrade it over many levels. Check the next-level effects and cost before spending. You can also find equipment during experiments; longer runs improve the chance of rare finds.",
+        "Build your first component with equipment vouchers and we'll fit it automatically. Then choose its first modification: sprint shoes recover speed quickly; trail shoes save energy and grip uneven ground. The workshop shows the price and every changed stat before you install it.",
       ],
       [
         "SANIK",
-        "Talents always apply; equipment applies while fitted. Runner shoes and outfits change Ellis's appearance. Projectile gear improves the launch rig or the projectile itself. Please leave the cannon in its own slot.",
+        "One pair of shoes is enough. New workbenches open as the lab grows, and useful finds can give you alternative gear. Talents always apply; equipment helps while fitted. We'll let you know when there is something new to build.",
       ],
     ],
     button: "Check the equipment",
@@ -171,7 +171,7 @@ export function storyDefinition(id: StoryId, game: Save): StoryDefinition {
     const era = Number(id.slice(4));
     const details = [
       "",
-      "The training clinic is open. Athletic talent chapters and carbon equipment are now available. Fund its coaching, data analysis or expedition support when those benefits fit your plans.",
+      "The training clinic is open. Each talent path now continues into athletic skills, including Second wind and Rolling start. You can train learned talents up to twelve ranks, build an outfit, and evolve your shoes. Runs also earn 50% more RP.",
       "The biomechanics workshop is open. Assisted movement and organ monitoring add new talent paths. Equipment can now reach level 49.",
       "Bionic integration is ready. Powered legs and implanted organs can multiply speed, rather than adding small fitness bonuses. Equipment can now reach level 74.",
       "Synthetic physiology is ready. Engineered organs and thermal control support much higher speeds over longer distances. Equipment can now reach level 99.",

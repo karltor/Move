@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import Research, { talentGate } from "./ResearchPanel";
-import { fresh, available, afford, research, stats, talentRank, talentCost, sharedUnlocked, restore } from "./game";
+import { fresh, available, afford, research, stats, talentRank, talentCost, talentLimit, sharedUnlocked, restore, routeChallenge, start } from "./game";
 import { NODE_MAP } from "./research";
 
 const render = (game = fresh()) => renderToStaticMarkup(createElement(Research, { game, setGame: () => {}, onRun: () => {}, onFunding: () => {} }));
@@ -24,10 +24,17 @@ describe("talent points and early paths", () => {
     expect(available(result, "runner-2-1")).toBe(true);
   });
 
-  it("offers twelve meaningful ranks with a fixed TP price and a hard maximum", () => {
+  it("teaches each basic talent once and opens twelve training ranks with the clinic", () => {
     let s = fresh();
     s.talentPoints = 12;
-    for (let rank = 1; rank <= 12; rank++) {
+    s = research(s, "runner-0-0");
+    expect(talentLimit(s, "runner-0-0")).toBe(1);
+    expect(talentRank(s, "runner-0-0")).toBe(1);
+    expect(research(s, "runner-0-0")).toBe(s);
+    expect(available(s, "runner-0-1")).toBe(true);
+    s.development.athletics = 1;
+    expect(talentLimit(s, "runner-0-0")).toBe(12);
+    for (let rank = 2; rank <= 12; rank++) {
       expect(talentCost(s, "runner-0-0")).toBe(1);
       s = research(s, "runner-0-0");
       expect(talentRank(s, "runner-0-0")).toBe(rank);
@@ -68,17 +75,39 @@ describe("talent points and early paths", () => {
     const s = fresh(); s.talentPoints = 4;
     const html = render(s);
     expect(html).toContain('aria-label="Talent tree"');
-    expect(html).toContain("Talents");
+    expect(html).toContain("Build your runner");
     expect(html).toContain("Warm-up ritual");
     expect(html).toContain("Cadence metronome");
     expect(html).toContain("Proper running shoes");
     expect(html).toContain("3 talents available");
     expect(html).toContain("Learn · 1 TP");
-    expect(html).toContain("Each rank adds");
+    expect(html).toContain("Six basic discoveries");
+    expect(html).toContain("Training clinic");
+    expect(html).toContain("180 RP");
     expect(html).toContain("Buy talent points");
     expect(html).not.toContain("Bionic legs");
     expect(html).not.toContain("Particle accelerator");
     expect(html).not.toContain("Shared laboratory");
     expect(html).not.toContain("atlas-canvas");
+    expect(html).not.toContain("Talent chapters");
+    expect(html).not.toContain("Rank 0 / 12");
+    expect(html).not.toContain("talent-lane-locked");
+    expect(html).toContain("menu-art/training.webp");
+  });
+
+  it("makes the six basics useful in different situations without early tradeoff penalties", () => {
+    const ids = ["runner-0-0", "runner-0-1", "runner-1-0", "runner-1-1", "runner-2-0", "runner-2-1"];
+    expect(new Set(ids.map(id => Object.keys(NODE_MAP.get(id)!.effects)[0])).size).toBe(6);
+    for (const id of ids) expect(Object.values(NODE_MAP.get(id)!.effects).every(value => value > 0)).toBe(true);
+    let base = start(fresh());
+    base.trial!.distance = 42;
+    const trained = { ...base, researched: ["runner-1-0", "runner-1-1"] };
+    expect(routeChallenge(trained).speedMultiplier).toBeGreaterThan(routeChallenge(base).speedMultiplier);
+    const funded = { ...fresh(), talentPoints: 6 };
+    let s = funded;
+    for (const id of ids) s = research(s, id);
+    expect(s.talentPoints).toBe(0);
+    expect(ids.every(id => talentRank(s, id) === 1)).toBe(true);
+    expect(NODE_MAP.get("runner-0-0")!.maxRank).toBe(12);
   });
 });

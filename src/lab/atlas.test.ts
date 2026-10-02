@@ -105,7 +105,7 @@ describe("long-form talent progression", () => {
     expect(stats(s).speed * 1.8).toBeGreaterThan(1000);
     expect(stats(s).speed).toBeGreaterThan(stats(fresh()).speed * 1000);
     expect(NODE_MAP.get("runner-4-6")!.multipliers?.speed).toBeCloseTo(Math.pow(1.16, .3));
-    expect(NODE_MAP.get("runner-4-11")!.multipliers?.speed).toBeCloseTo(Math.pow(15, .35));
+    expect(NODE_MAP.get("runner-4-11")!.multipliers?.speed).toBeCloseTo(Math.pow(18, .35));
   });
 
   it("leaves headroom for gear and distinct Push output in a fully evolved metric build", () => {

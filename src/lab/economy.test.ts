@@ -1,8 +1,10 @@
 import {describe,it,expect} from 'vitest';
 import {fresh,finish,start,step,research,restore,grantRP,stats,available,talentRank,spentTalents} from './game';
 import {NODES} from './research';
-import {exchange,quoteExchange,exchangePrice,fundingPreview,projectAvailable,investProject,projectShortfall,CURRENCY_LIMIT,EXCHANGE_BATCH_LIMIT} from './economy';
+import {exchange,quoteExchange,exchangePrice,fundingPreview,projectAvailable,investProject,projectShortfall,nextFacility,facilityProgress,CURRENCY_LIMIT,EXCHANGE_BATCH_LIMIT} from './economy';
 import {DEVELOPMENT_PROJECTS,currentEra} from './development';
+import {craftGear,upgradeGearTo} from './workshop';
+import {gearPaths} from './equipment';
 describe('RP funding',()=>{
  it('uses an exact quote and keeps all unspent RP',()=>{
   const s={...fresh(),science:100.8};
@@ -81,6 +83,58 @@ describe('RP funding',()=>{
   if(s.trial)s=finish(s);
   expect(s.science).toBeGreaterThanOrEqual(15);expect(s.science).toBeLessThan(30);
  });
+ it('buys only useful basic talent points before the clinic and leaves RP for facilities',()=>{
+  let s={...fresh(),science:10000};
+  let q=fundingPreview(s,'talent');
+  expect(q.quantity).toBe(6);expect(q.starterTalents).toBe(true);
+  expect(q.availableRanks).toBe(3);
+  s=exchange(s,'talent',q.cost);
+  expect(s.talentPoints).toBe(6);expect(s.science).toBeGreaterThan(9800);
+  expect(fundingPreview(s,'talent').quantity).toBe(0);
+  s=research(s,'runner-0-0');
+  expect(fundingPreview(s,'talent').quantity).toBe(0);
+  s={...s,development:{athletics:1}};
+  q=fundingPreview(s,'talent');
+  expect(q.starterTalents).toBe(false);expect(q.quantity).toBeGreaterThan(6);
+ });
+ it('funds one meaningful starter equipment purchase at a time',()=>{
+  let s={...fresh(),science:10000};
+  s.progress.runner.trials=2;
+  const before=fundingPreview(s,'voucher');
+  expect(before.quantity).toBe(2);expect(before.cost).toBe(71);expect(before.starterEquipment).toBe(true);
+  let funded=exchange(s,'voucher',before.cost);
+  expect(funded.vouchers).toBe(2);expect(funded.science).toBe(9929);
+  expect(fundingPreview(funded,'voucher').quantity).toBe(0);
+  s=craftGear(funded,'runner','footwear');
+  expect(s.vouchers).toBe(0);
+  const fit=fundingPreview(s,'voucher');
+  expect(fit.quantity).toBe(9);expect(fit.equipmentGoal?.action).toBe('Choose a fit');
+  funded=exchange(s,'voucher',fit.cost);
+  const item=s.inventory[0];
+  s=upgradeGearTo(funded,item.id,5,gearPaths(item)[0].id);
+  const improve=fundingPreview(s,'voucher');
+  expect(improve.quantity).toBe(8);
+  funded=exchange(s,'voucher',improve.cost);
+  s=upgradeGearTo(funded,item.id,9);
+  expect(s.inventory[0].upgradeLevel).toBe(9);expect(s.vouchers).toBe(0);
+  expect(fundingPreview(s,'voucher').quantity).toBe(0);
+  expect(fundingPreview(s,'voucher').starterEquipmentComplete).toBe(true);
+  s={...s,development:{athletics:1}};
+  expect(fundingPreview(s,'voucher').quantity).toBeGreaterThan(19);
+ });
+ it('keeps RP saved until vouchers can fund a complete starter purchase',()=>{
+  const s={...fresh(),science:40};
+  s.progress.runner.trials=2;
+  let quote=fundingPreview(s,'voucher');
+  expect(quote.quantity).toBe(0);expect(quote.cost).toBe(0);
+  expect(quote.equipmentGoal?.vouchers).toBe(2);expect(quote.equipmentGoal?.rpCost).toBe(71);
+  expect(exchange(s,'voucher',quote.cost)).toBe(s);
+  quote=fundingPreview({...s,science:71},'voucher');
+  expect(quote.quantity).toBe(2);expect(quote.cost).toBe(71);
+  const partial={...s,vouchers:1,science:36,currencyBought:{talent:0,voucher:1}};
+  quote=fundingPreview(partial,'voucher');
+  expect(quote.quantity).toBe(1);expect(quote.balance).toBe(2);expect(quote.cost).toBe(36);
+ });
  it('supports the temporary RP grant without buying milestones',()=>{
   const s=grantRP(fresh(),1e7);expect(s.science).toBe(1e7);
   expect(currentEra(s)).toBe(0);expect(s.researched).toHaveLength(0);
@@ -95,7 +149,7 @@ describe('development and ranks',()=>{
   expect(investProject(s,'athletics')).toBe(s);
   expect(projectShortfall(s,'athletics').join(' ')).toContain('experiments');
   s.progress.runner.trials=3;s.progress.runner.bestDistance=150;
-  for(let i=0;i<4;i++)s=research(s,'runner-0-0');
+  for(const id of ['runner-0-0','runner-1-0','runner-2-0','runner-0-1'])s=research(s,id);
   expect(spentTalents(s)).toBe(4);expect(projectAvailable(s,'athletics')).toBe(true);
   const n=investProject(s,'athletics');expect(currentEra(n)).toBe(1);
   expect(n.science).toBe(s.science-180);expect(stats(n).yield).toBeGreaterThan(stats(s).yield);
@@ -122,5 +176,21 @@ describe('development and ranks',()=>{
  it('adds new chapters through distinct facilities rather than RP alone',()=>{
   const s={...fresh(),science:1e12};
   for(const p of DEVELOPMENT_PROJECTS.filter(p=>p.opensEra))expect(projectAvailable(s,p.id)).toBe(false);
+ });
+ it('shows the next facility with progress that agrees with the actual purchase gate',()=>{
+  const s=fresh();
+  expect(nextFacility(s)?.id).toBe('athletics');
+  const goals=facilityProgress(s,'athletics');
+  expect(goals.map(g=>g.id)).toEqual(['distance','trials','talents','rp']);
+  expect(goals.map(g=>g.target)).toEqual([120,3,4,180]);
+  expect(goals.every(g=>!g.complete)).toBe(true);
+  let ready={...s,science:180,talentPoints:4};
+  ready.progress.runner.trials=3;ready.progress.runner.bestDistance=120;
+  for(const id of ['runner-0-0','runner-1-0','runner-2-0','runner-0-1'])ready=research(ready,id);
+  expect(facilityProgress(ready,'athletics').every(g=>g.complete)).toBe(true);
+  expect(projectAvailable(ready,'athletics')).toBe(true);
+  const built=investProject(ready,'athletics');
+  expect(nextFacility(built)?.id).toBe('biomechanics');
+  expect(built.science).toBe(0);
  });
 });

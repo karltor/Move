@@ -302,6 +302,11 @@ export function stats(s: Save, p = s.program) {
 }
 export const era = currentEra;
 export const talentRank = (s: Save,id:string) => s.talentRanks[id] ?? (s.researched.includes(id) ? 1 : 0);
+/** Learn the basics once; the clinic opens repeatable training afterwards. */
+export const talentLimit = (s: Save,id:string) => {
+  const node = NODE_MAP.get(id);
+  return node ? (currentEra(s) === 0 ? 1 : node.maxRank) : 0;
+};
 export const talentCost = (_s: Save,id:string) => NODE_MAP.get(id)?.cost ?? Infinity;
 export const spentTalents = (s: Save) => s.researched.reduce((total,id)=>total+talentRank(s,id),0);
 export function grantRP(s:Save,amount:number):Save {
@@ -400,7 +405,7 @@ export function available(s: Save, id: string) {
   return (
     !!n &&
     currentEra(s) >= n.era &&
-    talentRank(s,id) < n.maxRank &&
+    talentRank(s,id) < talentLimit(s,id) &&
     (!n.choiceGroup ||
       !s.researched.some(
         (owned) => owned !== id && NODE_MAP.get(owned)?.choiceGroup === n.choiceGroup,
@@ -428,7 +433,7 @@ export function research(s: Save, id: string): Save {
     talentPoints: s.talentPoints - talentCost(s,id),
     researched: s.researched.includes(id) ? s.researched : [...s.researched,id],
     talentRanks: {...s.talentRanks,[id]:talentRank(s,id)+1},
-    notice: n.name + " · rank " + (talentRank(s,id)+1) + "/" + n.maxRank + ".",
+    notice: n.name + (currentEra(s) === 0 ? " learned." : " · rank " + (talentRank(s,id)+1) + "/" + n.maxRank + "."),
   };
 }
 export function equipGear(s: Save, id: string): Save {

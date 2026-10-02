@@ -113,7 +113,7 @@ export default function Records({
             [
               "03",
               "Fund your improvements",
-              "Use Funding to convert RP into Talent Points or equipment vouchers. Talent Points unlock nodes and buy more ranks in the talent tree. Vouchers fund workshop upgrades. Development projects use RP directly for larger, lasting improvements.",
+              "Use Funding to buy Talent Points or equipment vouchers. Learn the six basic talents once; the training clinic opens further ranks and new paths. Build and modify equipment with vouchers. The next facility shows its RP price and a checklist of goals.",
             ],
             [
               "04",

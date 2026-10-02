@@ -1315,3 +1315,15 @@ td {
     transition: none !important;
   }
 }
+/* The laboratory grows from a compact, illustrated starting kit. */
+.menu-app { height:100dvh; display:flex; flex-direction:column; overflow:hidden; background:#f4f3e9; }
+.menu-app > .app-header { flex-shrink:0; height:64px; background:#fffdf6; border-color:#d9dfd0; }
+.menu-app > main { flex:1; min-height:0; width:100%; overflow:hidden; padding:18px 24px; }
+.menu-app .app-header nav button.active { color:#285c4e; border-color:#285c4e; }
+.menu-app .primary { background-color:#285c4e; }
+.menu-app .primary:hover:not(:disabled) { background-color:#214e41; }
+.menu-app .wallet { background:#e8eddf; border-color:#d2dcc7; color:#315945; }
+.menu-app .wallet > span { color:#60785b; }
+.menu-app .settings-button { color:#365f4c; }
+.menu-app .secondary { border-color:#bdcbb8; color:#365f4c; background:#fffdf7; }
+.menu-app.settings-app > main { overflow:auto; }

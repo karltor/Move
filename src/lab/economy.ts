@@ -1,6 +1,8 @@
-import { available, talentCost, talentRank, spentTalents, totalTrials, type Save } from './game';
+import { available, talentCost, talentRank, talentLimit, spentTalents, totalTrials, type Save } from './game';
 import { NODES } from './research';
 import { currentEra, DEVELOPMENT_PROJECTS, ERA_NAMES } from './development';
+import { beginnerVoucherNeed, CRAFT_CATALOG, workshopSlots, quoteUpgrade } from './workshop';
+import { gearPaths } from './equipment';
 export { currentEra, DEVELOPMENT_PROJECTS, ERA_NAMES } from './development';
 export type ExchangeKind = 'talent' | 'voucher';
 export const EXCHANGE_BATCH_LIMIT = 100000;
@@ -38,17 +40,90 @@ export function exchange(s: Save,kind: ExchangeKind,budget=s.science):Save {
     currencyBought:{...s.currencyBought,[kind]:s.currencyBought[kind]+quote.quantity},
     notice:`${quote.cost.toLocaleString('en')} RP converted into ${quote.quantity.toLocaleString('en')} ${kind==='talent'?'talent points':'equipment vouchers'}.`};
 }
+/** Fund one visible purchase at a time while the starter workshop is small. */
+export function starterEquipmentGoal(s: Save) {
+  const programs=[s.program,...s.unlocked.filter(program=>program!==s.program)];
+  for(const program of programs) for(const slot of workshopSlots(s,program)) {
+    const item=s.inventory.filter(gear=>gear.program===program&&gear.slot===slot)
+      .sort((a,b)=>Number(s.equipped.includes(b.id))-Number(s.equipped.includes(a.id))||(b.upgradeLevel??0)-(a.upgradeLevel??0))[0];
+    let vouchers=0, label='', action='';
+    if(!item) {
+      vouchers=CRAFT_CATALOG[program][slot].cost;
+      label=`Build ${CRAFT_CATALOG[program][slot].name.toLowerCase()}`;
+      action=slot==='footwear'&&program==='runner'?'Build shoes':label;
+    } else if((item.upgradeLevel??0)<9) {
+      const target=(item.upgradeLevel??0)<5?5:9;
+      vouchers=quoteUpgrade({...s,trial:null},item.id,target,item.upgradePath?undefined:gearPaths(item)[0].id).cost;
+      label=target===5?`Choose a fit for ${item.name.toLowerCase()}`:`Improve ${item.name.toLowerCase()} to level 9`;
+      action=target===5?'Choose a fit':'Improve gear';
+    }
+    if(!vouchers)continue;
+    const needed=Math.max(0,vouchers-s.vouchers);
+    let rpCost=0;
+    for(let index=0;index<needed;index++)rpCost+=exchangePrice('voucher',s.currencyBought.voucher+index);
+    return {label,action,program,slot,gearId:item?.id??null,vouchers,needed,rpCost,ready:s.vouchers>=vouchers};
+  }
+  return null;
+}
 export function fundingPreview(s:Save,kind:ExchangeKind) {
-  const quote=quoteExchange(s,kind);
+  let budget=s.science;
+  const starterTalents=kind==='talent'&&currentEra(s)===0;
+  const starterEquipment=kind==='voucher'&&currentEra(s)===0;
+  const equipmentGoal=starterEquipment?starterEquipmentGoal(s):null;
+  if(starterTalents) {
+    // Buy enough for every basic discovery, including the next steps in a path.
+    // Banking hundreds of unusable points before the clinic obscures the next goal.
+    const needed=Math.max(0,NODES.filter(n=>n.program===s.program&&n.era===0)
+      .reduce((sum,n)=>sum+Math.max(0,talentLimit(s,n.id)-talentRank(s,n.id))*talentCost(s,n.id),0)-s.talentPoints);
+    budget=0;
+    for(let index=0;index<needed;index++)budget+=exchangePrice(kind,s.currencyBought[kind]+index);
+  }
+  if(starterEquipment) {
+    // A partial conversion cannot build or fit the item. Keep the RP until the
+    // whole visible purchase is affordable; existing vouchers still count.
+    budget=equipmentGoal&&s.science>=equipmentGoal.rpCost?equipmentGoal.rpCost:0;
+  }
+  const quote=quoteExchange(s,kind,budget);
   const balance=kind==='talent'?quote.balance:s.talentPoints;
   const choices=NODES.filter(n=>n.program===s.program&&available(s,n.id)&&talentCost(s,n.id)<=balance);
   // This is a count of choices, not a promise to purchase every choice.
-  const availableRanks=choices.reduce((sum,n)=>sum+Math.min(n.maxRank-talentRank(s,n.id),Math.floor(balance/talentCost(s,n.id))),0);
-  return {...quote,availableNodes:choices.length,availableRanks};
+  const availableRanks=choices.reduce((sum,n)=>sum+Math.min(talentLimit(s,n.id)-talentRank(s,n.id),Math.floor(balance/talentCost(s,n.id))),0);
+  const basicsComplete=starterTalents&&NODES.filter(n=>n.program===s.program&&n.era===0).every(n=>talentRank(s,n.id)>=talentLimit(s,n.id));
+  const starterEquipmentComplete=starterEquipment&&beginnerVoucherNeed(s)===0;
+  return {...quote,starterTalents,starterEquipment,equipmentGoal,starterEquipmentComplete,basicsComplete,availableNodes:choices.length,availableRanks};
 }
 export function projectCost(s:Save,id:string) {
   const p=DEVELOPMENT_PROJECTS.find(p=>p.id===id);
   return p ? Math.min(1e15,Math.ceil(p.cost*Math.pow(1.32,s.development[id]??0))) : Infinity;
+}
+export interface FacilityGoal {
+  id: string;
+  label: string;
+  current: number;
+  target: number;
+  complete: boolean;
+}
+/** The next facility is visible as a goal; facilities further ahead stay undisclosed. */
+export function nextFacility(s: Save) {
+  return DEVELOPMENT_PROJECTS.find(project => project.opensEra && project.era <= currentEra(s)
+    && (s.development[project.id] ?? 0) < project.maxRank);
+}
+export function facilityProgress(s: Save, id: string): FacilityGoal[] {
+  const project = DEVELOPMENT_PROJECTS.find(project => project.id === id);
+  if (!project) return [];
+  const best = Math.max(0, ...Object.values(s.progress).map(progress => progress.bestDistance));
+  const gear = Math.max(0, ...s.inventory.map(item => item.upgradeLevel ?? 0));
+  const goals: FacilityGoal[] = [];
+  const add = (goalId: string, label: string, current: number, target: number) => {
+    goals.push({ id: goalId, label, current: Math.min(target, Math.floor(current)), target, complete: current >= target });
+  };
+  const requirement = project.requirement;
+  if (requirement.distance) add('distance', `Reach ${requirement.distance.toLocaleString('en')} m in one run`, best, requirement.distance);
+  if (requirement.trials) add('trials', `Complete ${requirement.trials.toLocaleString('en')} runs`, totalTrials(s), requirement.trials);
+  if (requirement.talents) add('talents', project.id === 'athletics' ? 'Learn 4 basic talents' : `Learn ${requirement.talents.toLocaleString('en')} talent ranks`, spentTalents(s), requirement.talents);
+  if (requirement.gearLevel) add('gear', `Upgrade gear to level ${requirement.gearLevel}`, gear, requirement.gearLevel);
+  add('rp', `Save ${projectCost(s, id).toLocaleString('en')} RP`, s.science, projectCost(s, id));
+  return goals;
 }
 export function projectShortfall(s:Save,id:string) {
   const p=DEVELOPMENT_PROJECTS.find(p=>p.id===id);

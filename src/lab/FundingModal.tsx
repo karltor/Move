@@ -16,7 +16,7 @@ export default function FundingModal({ game, setGame, onNavigate, onDismiss }: {
     ? "Large conversions buy up to 100,000 units per batch. Remaining RP stays available for another batch."
     : talent.capacityLimited||voucher.capacityLimited
       ? "Conversions stop at the currency limit. Unspent RP stays available."
-      : "Conversion uses all affordable RP in your current bank. Unspent RP stays available.";
+      : "Each purchase shows its exact RP cost. Unspent RP stays available for the clinic or a later run.";
   return <dialog ref={dialog} className="funding-modal" aria-label="Fund the next experiment" onCancel={(e) => { e.preventDefault(); onDismiss(); }}>
     {last && <div className="funding-receipt"><b>Experiment complete</b><span>+{Math.floor(last.science).toLocaleString("en")} RP earned</span><small>{last.program === "projectile" ? "Best landing" : "Distance"}: {Math.floor(last.distance).toLocaleString("en")} m · {last.speed.toFixed(1)} m/s peak</small></div>}
     <FundingPanel game={game} setGame={setGame} onNavigate={onNavigate} />

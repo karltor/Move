@@ -4,8 +4,9 @@ import { describe, expect, it } from "vitest";
 import FundingPanel from "./FundingPanel";
 import FundingModal from "./FundingModal";
 import Records from "./Records";
-import { fresh } from "./game";
+import { fresh, research } from "./game";
 import { fundingPreview } from "./economy";
+import { craftGear } from "./workshop";
 
 const noChange = () => {};
 describe("RP allocation screens", () => {
@@ -14,31 +15,68 @@ describe("RP allocation screens", () => {
     game.science = 100;
     const quote = fundingPreview(game, "talent");
     const html = renderToStaticMarkup(createElement(FundingPanel, { game, setGame: noChange, onNavigate: noChange }));
-    expect(html).toContain(`${quote.availableNodes} talent choices affordable after funding`);
-    expect(html).toContain("This is a count of options, not purchases.");
+    expect(html).toContain(`${quote.availableNodes} talent choices affordable`);
     expect(html).toContain(`for ${quote.cost} RP`);
-    expect(html).toContain("Convert RP · open talents");
-    expect(html).toContain("Convert RP · open workshop");
-    expect(html).toContain("Compare projects");
+    expect(html).toContain(`Buy ${quote.quantity} points · ${quote.cost} RP → Talents`);
+    expect(html).toContain("Workshop locked");
+    expect(html).toContain("Learn 4 basic talents");
+    expect(html).toContain('disabled="">Locked · 180 RP');
+    expect(html).not.toContain("Compare projects");
+    expect(html).not.toContain("Laboratory projects");
+    expect(html).not.toContain("Equipment vouchers");
     expect(html).not.toMatch(/Endurance|Impulse|Torque/);
   });
   it("keeps the workshop accessible with vouchers even when no RP remains", () => {
     const game = fresh();
     game.vouchers = 3;
     const html = renderToStaticMarkup(createElement(FundingPanel, { game, setGame: noChange, onNavigate: noChange }));
-    expect(html).toContain("Open workshop");
-    expect(html).not.toContain('disabled="">Open workshop');
+    expect(html).toContain("Build shoes →");
+    expect(html).not.toContain('disabled="">Build shoes');
+  });
+  it("shows a concrete shoe goal and keeps equipment accessible when its next purchase is unaffordable", () => {
+    let game = { ...fresh(), science: 40 };
+    game.progress.runner.trials = 2;
+    const render = () => renderToStaticMarkup(createElement(FundingPanel, { game, setGame: noChange, onNavigate: noChange }));
+    expect(render()).toContain("Build running shoes");
+    expect(render()).toContain("71 RP buys the 2 missing vouchers");
+    expect(render()).toContain('disabled="">Save 31 more RP');
+    expect(render()).toContain("Open equipment without buying");
+    game = { ...game, science: 71 };
+    expect(render()).toContain("Buy 2 vouchers · 71 RP → Build shoes");
+    game = craftGear({ ...game, vouchers: 2, science: 0 }, "runner", "footwear");
+    expect(render()).toContain("Choose a fit for running shoes");
+    expect(render()).toContain("Open equipment without buying");
+  });
+  it("replaces the talent purchase quote with an honest finished state after the six basics", () => {
+    let game = { ...fresh(), science: 180, talentPoints: 6 };
+    for (const id of ["runner-0-0", "runner-0-1", "runner-1-0", "runner-1-1", "runner-2-0", "runner-2-1"]) game = research(game, id);
+    const html = renderToStaticMarkup(createElement(FundingPanel, { game, setGame: noChange, onNavigate: noChange }));
+    expect(html).toContain("Basics learned ✓");
+    expect(html).toContain("Build the clinic to open further training");
+    expect(html).toContain("View learned talents");
+    expect(html).not.toContain("for 0 RP");
+    expect(html).not.toContain("0 talent choices affordable");
   });
   it("reveals development projects by era instead of spoiling the entire end game", () => {
     const game = fresh();
     const render = () => renderToStaticMarkup(createElement(FundingPanel, { game, setGame: noChange, onNavigate: noChange, development: true }));
     const early = render();
-    expect(early).toContain("Build the training clinic");
+    expect(early).toContain("Training clinic");
     expect(early).not.toContain("Commission the metric laboratory");
     expect(early).not.toContain("Build the inertial test chamber");
     game.development.athletics = 1;
-    expect(render()).toContain("Open the biomechanics workshop");
+    expect(render()).toContain("Biomechanics workshop");
     expect(render()).toContain("Expand the data network");
+  });
+  it("keeps a wealthy beginner's clinic locked until the displayed goals are completed", () => {
+    let game = { ...fresh(), science: 10000, talentPoints: 4 };
+    const render = () => renderToStaticMarkup(createElement(FundingPanel, { game, setGame: noChange, onNavigate: noChange }));
+    expect(render()).toContain('disabled="">Locked · 180 RP');
+    game.progress.runner.trials = 3; game.progress.runner.bestDistance = 120;
+    for (const id of ["runner-0-0", "runner-1-0", "runner-2-0", "runner-0-1"]) game = research(game, id);
+    expect(render()).toContain("Build · 180 RP → Talents");
+    expect(render()).not.toContain('disabled="">Build · 180 RP');
+    expect(render()).toContain("clinic.webp");
   });
   it("shows RP earned and offers keeping the bank intact at debrief", () => {
     const game = fresh();

@@ -25,7 +25,9 @@ export function characterEquipment(s: Pick<Save, "inventory" | "equipped" | "pro
       GearAntenna: tier("instrument") >= 1,
     },
     colors: {
-      footwear: colors[Math.max(0, tier("footwear"))],
+      footwear: tier("footwear") < 2 && slots.footwear?.upgradePath === "distance" ? "#38796b"
+        : tier("footwear") < 2 && slots.footwear?.upgradePath === "kinetic" ? "#cf914a"
+        : colors[Math.max(0, tier("footwear"))],
       outfit: colors[Math.max(0, tier("outfit"))],
       instrument: colors[Math.max(0, tier("instrument"))],
     },

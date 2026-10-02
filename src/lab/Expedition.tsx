@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { PROGRAMS, VARIANTS, STAT_LABELS, type Stat } from "./research";
 import { SLOTS, slotName, gearName } from "./equipment";
+import { visibleGearPaths } from "./workshop";
 import {
   biomeAt,
   BIOMES,
@@ -608,7 +609,7 @@ export default function Expedition({
                           .filter((g) => g.slot === slot)
                           .map((g) => (
                             <option key={g.id} value={g.id}>
-                              {gearName(g)} · level {g.upgradeLevel ?? 0}
+                              {gearName(g)}{g.upgradePath ? ` · ${visibleGearPaths(g).find(path => path.id === g.upgradePath)?.name ?? "Modified"}` : ""} · level {g.upgradeLevel ?? 0}
                             </option>
                           ))}
                       </select>

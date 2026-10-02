@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { fresh, restore, start, equipGear, stats, type Save } from "./game";
-import { CRAFT_CATALOG, craftGear, effectiveBonus, nextMilestone, quoteUpgrade, stageLevelCap, upgradeCost, upgradeGear, upgradeGearTo, upgradeRequirement } from "./workshop";
+import { fresh, restore, start, stats, type Save } from "./game";
+import { CRAFT_CATALOG, craftGear, craftRequirement, craftAlternate, beginnerVoucherNeed, effectiveBonus, nextMilestone, quoteAlternate, quoteUpgrade, stageLevelCap, upgradeCost, upgradeGear, upgradeGearTo, upgradeRequirement, workshopSlots, visibleGearPaths } from "./workshop";
 import { GEAR_LEVEL_CAP, SLOTS, gearEffects, gearMultipliers, gearPaths, gearStage, validateGear } from "./equipment";
 import { DEVELOPMENT_PROJECTS } from "./development";
 import type { Program } from "./research";
@@ -15,7 +15,7 @@ function built(program: Program = "runner", era = 0) {
 describe("equipment workshop", () => {
   it("builds deterministic, relevant starters for exactly two vouchers", () => {
     for (const program of ["runner", "projectile", "wheels"] as Program[]) {
-      let s = workshop(program);
+      let s = workshop(program, 2);
       for (const slot of SLOTS) {
         const balance = s.vouchers, serial = s.nextGear;
         s = craftGear(s, program, slot);
@@ -24,7 +24,7 @@ describe("equipment workshop", () => {
         expect(item.id).toBe("gear-" + serial);
         expect(item.affixes).toEqual([{ stat: CRAFT_CATALOG[program][slot].stat, value: .05 }]);
         expect(s.nextGear).toBe(serial + 1);
-        expect(s.equipped).not.toContain(item.id);
+        expect(s.equipped).toContain(item.id);
       }
     }
     const s = { ...fresh(), vouchers: 1 };
@@ -61,7 +61,7 @@ describe("equipment workshop", () => {
     expect(upgradeGear(power, id, "distance")).toBe(power);
     expect(upgradeGearTo(power, id, 9, "distance")).toBe(power);
     for (const program of ["runner", "projectile", "wheels"] as Program[]) for (const slot of SLOTS) {
-      const item = craftGear(workshop(program), program, slot).inventory[0];
+      const item = craftGear(workshop(program, 2), program, slot).inventory[0];
       expect(gearPaths(item)).toHaveLength(2);
       for (const path of gearPaths(item)) {
         expect(Object.values(path.effects).some((v) => v! < 0)).toBe(true);
@@ -102,7 +102,7 @@ describe("equipment workshop", () => {
     expect(rank200.inventory[0].era).toBe(6);
     expect(rank200.inventory[0].name).toContain("overclock 100");
     expect(upgradeGear(rank200, id)).toBe(rank200);
-    expect(stats(equipGear(rank100, id)).speed).toBeGreaterThan(stats(fresh()).speed * 1000);
+    expect(stats(rank100).speed).toBeGreaterThan(stats(fresh()).speed * 1000);
     const at = (level: number) => upgradeCost({ ...s, inventory: [{ ...s.inventory[0], upgradeLevel: level, upgradePath: "kinetic" }] }, id);
     expect(at(0)).toBe(1);
     expect(at(99)).toBeGreaterThan(900);
@@ -121,19 +121,86 @@ describe("equipment workshop", () => {
   });
   it("does workshop work during an experiment without mutating its active components", () => {
     let s = built(), id = s.inventory[0].id;
-    s = start(equipGear(s, id), 10);
+    s = start({ ...s, development: workshop("runner", 2).development }, 10);
     expect(upgradeGear(s, id)).toBe(s);
     expect(upgradeGearTo(s, id, 4)).toBe(s);
     const spare = craftGear(s, "runner", "outfit"), spareId = spare.inventory[1].id;
     expect(spare.trial).toBe(s.trial);
     expect(upgradeGear(spare, spareId).inventory[1].upgradeLevel).toBe(1);
     expect(stats(upgradeGear(spare, spareId))).toEqual(stats(spare));
-    expect(equipGear(spare, spareId)).toBe(spare);
+    expect(spare.equipped).not.toContain(spareId);
   });
   it("round-trips transformed equipment and rejects malformed enhancement metadata", () => {
     const s = built("runner", 6), id = s.inventory[0].id;
     const upgraded = upgradeGearTo(s, id, 200, "kinetic"), item = upgraded.inventory[0];
     expect(restore(JSON.stringify(upgraded)).inventory).toEqual(upgraded.inventory);
     expect(validateGear([item, { ...item, id: "bad-path", upgradePath: "distance-or-whatever" }, { ...item, id: "early-path", upgradeLevel: 4 }, { ...item, id: "no-path", upgradePath: undefined }, { ...item, id: "too-high", upgradeLevel: 201 }])).toEqual([item]);
+  });
+  it("reveals new workbenches through progress while keeping found gear usable", () => {
+    expect(workshopSlots(workshop(), "runner")).toEqual(["footwear"]);
+    expect(workshopSlots(workshop("runner", 1), "runner")).toEqual(["footwear", "outfit"]);
+    const measured = workshop("runner", 1);
+    measured.progress.runner.best = 2;
+    measured.progress.runner.bestDistance = 400;
+    expect(workshopSlots(measured, "runner")).toEqual(SLOTS);
+    const fast = workshop("runner", 1);
+    fast.progress.runner.best = 400;
+    fast.progress.runner.bestDistance = 100;
+    expect(workshopSlots(fast, "runner")).toEqual(["footwear", "outfit"]);
+    const later = workshop("runner", 2);
+    expect(workshopSlots(later, "runner")).toEqual(SLOTS);
+    const watch = craftGear(later, "runner", "instrument").inventory[0];
+    expect(workshopSlots({ ...workshop(), inventory: [watch] }, "runner")).toEqual(["footwear", "instrument"]);
+  });
+  it("prevents redundant basics and fits a new component without an extra click", () => {
+    const s = built(), serial = s.nextGear;
+    expect(s.equipped).toEqual([s.inventory[0].id]);
+    expect(craftGear(s, "runner", "footwear")).toBe(s);
+    expect(craftRequirement(s, "runner", "footwear")).toContain("already own");
+    expect(craftGear(s, "runner", "outfit")).toBe(s);
+    expect(s.nextGear).toBe(serial);
+    const queued = craftGear(start(workshop("runner", 2), 10), "runner", "footwear");
+    expect(queued.inventory).toHaveLength(1);
+    expect(queued.equipped).toHaveLength(0);
+    expect(queued.notice).toContain("next experiment");
+  });
+  it("offers an alternate build only when it adds a different useful specialization", () => {
+    const base = built("runner", 2), primary = upgradeGearTo(base, "gear-1", 5, "kinetic");
+    const quote = quoteAlternate(primary, "runner", "footwear", "distance");
+    expect(quote.blocked).toBe("");
+    expect(quote.cost).toBe(CRAFT_CATALOG.runner.footwear.cost + quoteUpgrade(base, "gear-1", 5, "distance").cost);
+    const alternate = craftAlternate(primary, "runner", "footwear", "distance");
+    expect(alternate.inventory).toHaveLength(2);
+    expect(alternate.inventory[1].upgradePath).toBe("distance");
+    expect(alternate.inventory[1].upgradeLevel).toBe(5);
+    expect(alternate.equipped).toEqual(primary.equipped);
+    expect(alternate.vouchers).toBe(primary.vouchers - quote.cost);
+    expect(craftAlternate(alternate, "runner", "footwear", "distance")).toBe(alternate);
+    expect(craftAlternate(primary, "runner", "footwear", "kinetic")).toBe(primary);
+    const poor = { ...primary, vouchers: quote.cost - 1 };
+    expect(craftAlternate(poor, "runner", "footwear", "distance")).toBe(poor);
+    const early = upgradeGearTo(built(), "gear-1", 5, "kinetic");
+    expect(craftAlternate(early, "runner", "footwear", "distance")).toBe(early);
+    expect(restore(JSON.stringify(alternate)).inventory).toEqual(alternate.inventory);
+  });
+  it("budgets only useful starter work and quotes future improvements during an active run", () => {
+    const starter = { ...fresh(), vouchers: 100 };
+    expect(beginnerVoucherNeed(starter)).toBe(19);
+    const basic = craftGear(starter, "runner", "footwear");
+    expect(beginnerVoucherNeed(basic)).toBe(17);
+    const fitted = upgradeGearTo(basic, "gear-1", 5, "distance");
+    expect(beginnerVoucherNeed(fitted)).toBe(8);
+    expect(beginnerVoucherNeed(start(fitted, 10))).toBe(8);
+    const duplicate = { ...basic.inventory[0], id: "gear-2" };
+    expect(beginnerVoucherNeed({ ...fitted, inventory: [...fitted.inventory, duplicate] })).toBe(8);
+    const complete = upgradeGearTo(fitted, "gear-1", 9);
+    expect(beginnerVoucherNeed(complete)).toBe(0);
+    expect(beginnerVoucherNeed({ ...complete, unlocked: ["runner", "projectile"] })).toBe(19);
+  });
+  it("describes plain gear in everyday language while keeping its specialization identity", () => {
+    const basic = built().inventory[0];
+    expect(visibleGearPaths(basic).map((p) => p.name)).toEqual(["Sprint fit", "Trail fit"]);
+    expect(visibleGearPaths(basic).map((p) => p.id)).toEqual(gearPaths(basic).map((p) => p.id));
+    expect(visibleGearPaths({ ...basic, upgradeLevel: 10 }).map((p) => p.name)).toEqual(["Kinetic drive", "Distance drive"]);
   });
 });

@@ -136,7 +136,7 @@ export default function App() {
   return (
     <div
       className={
-        "app " +
+        "app " + (tab !== "field" ? "menu-app " : "") +
         (tab === "field" ? "run-app" : tab === "research" ? "atlas-app" : tab === "funding" || tab === "development" ? "funding-app" : tab === "settings" ? "settings-app" : "")
       }
     >

@@ -1,69 +1,101 @@
 import { useEffect, useState } from "react";
-import { SLOTS, slotName, STAT_NAMES, RARITIES, GEAR_STAGE_NAMES, gearName, gearPaths, gearStage, type Gear, type Slot } from "./equipment";
+import { slotName, STAT_NAMES, RARITIES, gearName, type Gear, type Slot } from "./equipment";
 import { equipGear, salvageGear, distance, type Save } from "./game";
 import { PROGRAMS, type Program, type Stat } from "./research";
 import { currentEra, ERA_NAMES } from "./development";
-import { CRAFT_CATALOG, craftGear, effectiveBonus, nextMilestone, quoteUpgrade, stageLevelCap, upgradeGearTo, upgradeRequirement } from "./workshop";
-import Glyph from "./ResearchGlyph";
+import { starterEquipmentGoal } from "./economy";
+import { CRAFT_CATALOG, craftGear, craftRequirement, craftAlternate, effectiveBonus, nextMilestone, quoteAlternate, quoteUpgrade, stageLevelCap, upgradeGearTo, workshopSlots, slotRequirement, visibleGearPaths } from "./workshop";
 import "./newworkshop.css";
 
 const number = (value: number) => Math.floor(value).toLocaleString("en");
+const art = (program: Program, slot: Slot) => import.meta.env.BASE_URL + "menu-art/" + (program === "projectile" ? "launcher" : program === "wheels" ? "wheels" : slot === "instrument" ? "workbench" : slot === "footwear" ? "shoes" : "vest") + ".webp";
 export function formatGearBonus(value: number) {
   return value >= 9 ? "×" + (1 + value).toLocaleString("en", { maximumFractionDigits: 1 }) : (value < 0 ? "−" : "+") + (Math.abs(value) * 100).toLocaleString("en", { maximumFractionDigits: 1 }) + "%";
 }
-function GearStats({ gear, compare, compact = false }: { gear: Gear; compare?: Gear; compact?: boolean }) {
-  return <dl className={"workshop-stats" + (compact ? " compact" : "")}>
+function GearStats({ gear, compare, changesOnly = false }: { gear: Gear; compare?: Gear; changesOnly?: boolean }) {
+  return <dl className="gear-benefits">
     {(Object.keys(STAT_NAMES) as Stat[]).map((stat) => {
       const value = effectiveBonus(gear, stat), old = compare ? effectiveBonus(compare, stat) : 0;
-      if (Math.abs(value) < .00001 && Math.abs(old) < .00001) return null;
-      return <div key={stat}><dt>{STAT_NAMES[stat]}</dt><dd className={value < 0 ? "short" : "enough"}>{compare && <span className="workshop-old-stat">{formatGearBonus(old)} → </span>}{formatGearBonus(value)}</dd></div>;
+      if ((Math.abs(value) < .00001 && Math.abs(old) < .00001) || (changesOnly && Math.abs(value - old) < .00001)) return null;
+      return <div key={stat}><dt>{STAT_NAMES[stat]}</dt><dd className={value < 0 || (compare && value < old) ? "gear-cost" : "gear-gain"}>{compare && <span>{formatGearBonus(old)} → </span>}{formatGearBonus(value)}</dd></div>;
     })}
   </dl>;
 }
-export default function Equipment({ game, setGame, onFunding }: { game: Save; setGame: React.Dispatch<React.SetStateAction<Save>>; onFunding?: () => void }) {
-  const [program, setProgram] = useState<Program>(game.program);
-  const [selectedId, select] = useState<string | null>(game.lastDrop);
-  const [path, choosePath] = useState<string>();
-  const [recycle, setRecycle] = useState(false);
-  const [target, setTarget] = useState("one");
-  const items = game.inventory.filter((g) => g.program === program).sort((a, b) => Number(game.equipped.includes(b.id)) - Number(game.equipped.includes(a.id)) || (b.upgradeLevel ?? 0) - (a.upgradeLevel ?? 0) || RARITIES.indexOf(b.rarity) - RARITIES.indexOf(a.rarity) || Number(b.id.slice(5)) - Number(a.id.slice(5)));
-  const selected = items.find((g) => g.id === selectedId) ?? items[0];
-  useEffect(() => { choosePath(undefined); setRecycle(false); setTarget("one"); }, [selected?.id]);
-  const level = selected?.upgradeLevel ?? 0, cap = stageLevelCap(game);
-  const milestone = selected ? nextMilestone({ ...selected, upgradePath: selected.upgradePath ?? path }) : null;
-  const goal = target === "milestone" ? Math.min(cap, milestone?.level ?? cap) : target === "five" ? Math.min(cap, level + 5) : level + 1;
-  const quote = selected ? quoteUpgrade(game, selected.id, goal, selected.upgradePath ? undefined : path) : null;
-  const needsPath = selected && !selected.upgradePath && goal >= 5 && cap >= 5;
-  const equipped = selected && game.equipped.includes(selected.id);
-  const old = selected ? items.find((g) => g.slot === selected.slot && game.equipped.includes(g.id) && g.id !== selected.id) : undefined;
-  const upgradeBlocked = selected ? upgradeRequirement(game, selected.id) : "";
-  const activeComponent = !!(game.trial && selected && selected.program === game.program && equipped);
-  function build(slot: Slot) {
-    const id = "gear-" + game.nextGear;
-    setGame((s) => craftGear(s, program, slot));
-    select(id);
+function groupSpares(items: Gear[]) {
+  const groups = new Map<string, Gear[]>();
+  for (const gear of items) {
+    const key = JSON.stringify([gear.slot, gearName(gear), gear.upgradeLevel ?? 0, gear.upgradePath ?? "", gear.affixes]);
+    groups.set(key, [...(groups.get(key) ?? []), gear]);
   }
+  return [...groups.values()];
+}
+/** Open the component Funding actually quoted, rather than an unrelated recent find. */
+export function equipmentFocus(game: Save): { program: Program; slot: Slot; gearId: string | null } {
+  const goal = currentEra(game) === 0 ? starterEquipmentGoal(game) : null;
+  if (goal) return { program: goal.program, slot: goal.slot, gearId: goal.gearId };
+  const fitted = game.inventory.filter((gear) => gear.program === game.program && gear.slot === "footwear")
+    .sort((a, b) => Number(game.equipped.includes(b.id)) - Number(game.equipped.includes(a.id)) || (b.upgradeLevel ?? 0) - (a.upgradeLevel ?? 0))[0];
+  return { program: game.program, slot: "footwear", gearId: fitted?.id ?? null };
+}
+export default function Equipment({ game, setGame, onFunding }: { game: Save; setGame: React.Dispatch<React.SetStateAction<Save>>; onFunding?: () => void }) {
+  const [initialFocus] = useState(() => equipmentFocus(game));
+  const [program, setProgram] = useState<Program>(initialFocus.program);
+  const [selectedId, select] = useState<string | null>(initialFocus.gearId);
+  const [selectedSlot, selectSlot] = useState<Slot>(initialFocus.slot);
+  const [path, choosePath] = useState<string>();
+  const [stored, showStored] = useState(false);
+  const [recycle, setRecycle] = useState(false);
+  const [batch, setBatch] = useState("stage");
+  const items = game.inventory.filter((g) => g.program === program).sort((a, b) => Number(game.equipped.includes(b.id)) - Number(game.equipped.includes(a.id)) || (b.upgradeLevel ?? 0) - (a.upgradeLevel ?? 0) || RARITIES.indexOf(b.rarity) - RARITIES.indexOf(a.rarity));
+  const selected = items.find((g) => g.id === selectedId) ?? items.find((g) => g.slot === selectedSlot);
+  const slot = selected?.slot ?? selectedSlot;
+  const recipe = CRAFT_CATALOG[program][slot];
+  const slots = workshopSlots(game, program);
+  const era = currentEra(game), level = selected?.upgradeLevel ?? 0, cap = stageLevelCap(game);
+  const milestone = selected ? nextMilestone(selected) : null;
+  const tuning = !!selected && !selected.upgradePath && level < 5;
+  const goal = tuning ? 5 : Math.min(cap, batch === "one" ? level + 1 : batch === "five" ? level + 5 : milestone?.level ?? cap);
+  const quote = selected ? quoteUpgrade(game, selected.id, goal, selected.upgradePath ? undefined : path) : null;
+  const equipped = !!selected && game.equipped.includes(selected.id);
+  const active = !!(game.trial && selected && selected.program === game.program && equipped);
+  const old = selected ? items.find((g) => g.slot === selected.slot && game.equipped.includes(g.id) && g.id !== selected.id) : undefined;
+  const spareItems = items.filter((g) => !game.equipped.includes(g.id));
+  const spareGroups = groupSpares(spareItems);
+  const currentPath = selected && visibleGearPaths(selected).find((p) => p.id === selected.upgradePath);
+  const alternative = selected && era >= 2 && currentPath ? visibleGearPaths(selected).find((p) => p.id !== currentPath.id) : undefined;
+  const alternate = selected && alternative ? quoteAlternate(game, program, selected.slot, alternative.id) : null;
+  const nextLocked = (["outfit", "instrument"] as Slot[]).find((candidate) => !slots.includes(candidate));
+  useEffect(() => { choosePath(undefined); setRecycle(false); setBatch("stage"); }, [selected?.id]);
+  function pick(gear?: Gear, emptySlot?: Slot) { select(gear?.id ?? null); selectSlot(gear?.slot ?? emptySlot ?? "footwear"); }
+  function build() { const id = "gear-" + game.nextGear; setGame((s) => craftGear(s, program, slot)); select(id); }
+  function improve() { if (selected) setGame((s) => upgradeGearTo(s, selected.id, goal, selected.upgradePath ? undefined : path)); }
   return <section className="equipment-workshop">
-    <header className="workshop-heading"><div><span className="eyebrow">{ERA_NAMES[currentEra(game)]} / COMPONENT WORKSHOP</span><h1>Equipment</h1></div><div className="workshop-programs" aria-label="Equipment program">{game.unlocked.map((p) => <button key={p} className={program === p ? "active" : ""} onClick={() => { setProgram(p); select(null); }}>{PROGRAMS[p].short}</button>)}</div><div className="workshop-wallet"><span>EQUIPMENT VOUCHERS</span><strong>{number(game.vouchers)}</strong>{onFunding && <button className="text-button" onClick={onFunding}>Buy with RP →</button>}</div></header>
-    <div className="workshop-loadout" aria-label="Current loadout">{SLOTS.map((slot) => {
-      const gear = items.find((g) => g.slot === slot && game.equipped.includes(g.id));
-      return <button key={slot} className={"workshop-loadout-slot" + (gear?.id === selected?.id ? " selected" : "")} disabled={!gear} onClick={() => gear && select(gear.id)}><Glyph name={slot === "footwear" ? "shoe" : slot === "outfit" ? "heart" : "target"} /><span><small>{slotName(program, slot)}</small><b>{gear ? gearName(gear) : "Empty"}</b></span>{gear && <em>Lv {gear.upgradeLevel ?? 0}</em>}</button>;
-    })}</div>
+    <header className="workshop-heading"><div><span className="eyebrow">FIT FOR THE NEXT EXPERIMENT</span><h1>Equipment</h1></div>{game.unlocked.length > 1 && <div className="workshop-programs" aria-label="Equipment program">{game.unlocked.map((p) => <button key={p} className={program === p ? "active" : ""} onClick={() => { setProgram(p); pick(); }}>{PROGRAMS[p].short}</button>)}</div>}<div className="workshop-wallet"><span>Equipment vouchers</span><strong>{number(game.vouchers)}</strong>{onFunding && <button className="text-button" onClick={onFunding}>Buy with RP →</button>}</div></header>
     <div className="workshop-body">
-      <aside className="workshop-stock"><div className="workshop-stock-heading"><h2>Build basic gear</h2><small>2 vouchers each</small></div><div className="workshop-recipes">{SLOTS.map((slot) => {
-        const recipe = CRAFT_CATALOG[program][slot];
-        return <div key={slot}><span><b>{recipe.name}</b><small>+5% {STAT_NAMES[recipe.stat].toLowerCase()}</small></span><button className="secondary" disabled={game.vouchers < recipe.cost || game.inventory.length >= 90} onClick={() => build(slot)} aria-label={`Build ${recipe.name} for ${recipe.cost} vouchers`}>Build · {recipe.cost}</button></div>;
-      })}</div><div className="workshop-stock-heading"><h2>Your components</h2><small>{game.inventory.length} / 90 stored</small></div><div className="workshop-inventory">{!items.length && <p className="workshop-empty-stock">Build a starter component here. Field finds can have several original bonuses; both can follow the same upgrade stages.</p>}{items.map((g) => <button className={"workshop-inventory-item " + g.rarity.toLowerCase() + (selected?.id === g.id ? " selected" : "")} key={g.id} onClick={() => select(g.id)}><span><small>{slotName(program, g.slot)} · {g.rarity}{game.equipped.includes(g.id) ? " · Equipped" : ""}</small><b>{gearName(g)}</b></span><strong>{g.upgradeLevel ?? 0}<small>LEVEL</small></strong></button>)}</div></aside>
-      {selected ? <article className="workshop-component">
-        <div className="workshop-component-header"><div><span className="eyebrow">{slotName(program, selected.slot)} / {GEAR_STAGE_NAMES[gearStage(selected)]}{level > 100 ? " / Overclocked" : ""}</span><h2>{gearName(selected)}</h2><small>{selected.crafted ? "Built in the workshop" : `Found at ${distance(selected.foundAt)}`} · {selected.rarity}{selected.upgradePath ? " · " + gearPaths(selected).find((p) => p.id === selected.upgradePath)?.name : ""}</small></div><div className="workshop-level"><strong>{level}</strong><span>LEVEL / {cap}</span></div></div>
-        <div className="workshop-detail-scroll">
-          <div className="workshop-component-stats"><section><h3>{old ? "Replace comparison" : "Current component bonuses"}</h3><GearStats gear={selected} compare={old} /></section><section className="workshop-next-stage"><span className="eyebrow">{milestone ? `NEXT COMPONENT STAGE · LEVEL ${milestone.level}` : "FINAL COMPONENT STAGE"}</span><h3>{milestone?.name ?? "Fully overclocked"}</h3>{milestone && <GearStats gear={milestone.preview} compare={selected} compact />}{milestone && milestone.level > cap && <small>Open {ERA_NAMES[currentEra(game) + 1]} in Development to reach this stage.</small>}</section></div>
-          {needsPath && !activeComponent && <fieldset className="workshop-paths"><legend>Choose the enhancement path · permanent from level 5</legend>{gearPaths(selected).map((p) => <label key={p.id} className={path === p.id ? "selected" : ""}><input type="radio" name="enhancement" checked={path === p.id} onChange={() => choosePath(p.id)} /><span><b>{p.name}</b><small>{p.description}</small><span className="workshop-path-effects">{Object.entries(p.effects).map(([stat, effect]) => <em className={effect! < 0 ? "short" : "enough"} key={stat}>{formatGearBonus(effect! * (1 + goal / 50))} {STAT_NAMES[stat as Stat]}</em>)}</span></span></label>)}</fieldset>}
-          {quote?.gear && quote.levels > 0 && <section className="workshop-next-rank"><h3>This purchase · level {level} → {quote.level}</h3><GearStats gear={quote.gear} compare={selected} compact /></section>}
-          {!!upgradeBlocked && (!needsPath || activeComponent) && <p className="workshop-requirement">{upgradeBlocked}</p>}
+      <aside className="workshop-bench"><h2>Your loadout</h2><div className="workshop-loadout">{slots.map((candidate) => {
+        const gear = items.find((g) => g.slot === candidate && game.equipped.includes(g.id)) ?? items.find((g) => g.slot === candidate);
+        return <button key={candidate} className={slot === candidate ? "selected" : ""} onClick={() => pick(gear, candidate)}><img src={art(program, candidate)} alt="" /><span><small>{slotName(program, candidate)}</small><b>{gear ? gearName(gear) : CRAFT_CATALOG[program][candidate].name}</b><em>{gear ? game.equipped.includes(gear.id) ? "Fitted" : "Ready to fit" : `Build · ${CRAFT_CATALOG[program][candidate].cost} vouchers`}</em></span></button>;
+      })}</div>
+      {nextLocked && <div className="workshop-unlock"><span className="eyebrow">NEXT WORKBENCH</span><b>{slotName(program, nextLocked)}</b><p>{slotRequirement(game, program, nextLocked)}</p>{era === 0 && onFunding && <button className="text-button" onClick={onFunding}>View training clinic →</button>}</div>}
+      {spareItems.length > 0 && <div className="workshop-storage"><button className="workshop-storage-toggle" aria-expanded={stored} onClick={() => showStored(!stored)}>Stored gear <span>{spareItems.length} {stored ? "−" : "+"}</span></button>{stored && <div className="workshop-spares">{spareGroups.map((group) => <div key={group[0].id}><button className={selected?.id === group[0].id ? "selected" : ""} onClick={() => pick(group[0])}><b>{gearName(group[0])}</b><small>{group[0].upgradePath ? visibleGearPaths(group[0]).find((p) => p.id === group[0].upgradePath)?.name : group[0].rarity} · Lv {group[0].upgradeLevel ?? 0}{group.length > 1 ? ` · ${group.length} identical copies` : ""}</small></button>{group.length > 1 && <details><summary>Choose a copy</summary>{group.map((gear, index) => <button key={gear.id} onClick={() => pick(gear)}>Copy {index + 1}{gear.id === selected?.id ? " · Selected" : ""}</button>)}</details>}</div>)}</div>}</div>}
+      {active && <p className="workshop-live-note">This loadout is in use. Finish the experiment before changing it.</p>}
+      </aside>
+      <article className={"workshop-project" + (!selected ? " starter" : "")}>
+        <div className="workshop-project-scroll">
+          <div className="workshop-hero"><div className="workshop-illustration"><img src={art(program, slot)} alt={program === "runner" && slot === "footwear" ? "A pair of running shoes on the workshop bench" : "Equipment on the workshop bench"} /><span>{selected ? equipped ? "FITTED" : "IN STORAGE" : "YOUR FIRST COMPONENT"}</span></div><div className="workshop-summary"><span className="eyebrow">{slotName(program, slot)}{selected && level >= 10 ? ` · Level ${level}` : ""}</span><h2>{selected ? gearName(selected) : recipe.name}</h2><p>{selected ? currentPath?.description ?? (selected.crafted ? recipe.description : `This field find adds ${selected.affixes.map((affix) => formatGearBonus(effectiveBonus(selected, affix.stat)) + " " + STAT_NAMES[affix.stat].toLowerCase()).join(", ")}. Choose how to modify it.`) : recipe.description}</p>{selected ? <><GearStats gear={selected} compare={old} /><small className="workshop-origin">{selected.crafted ? "Built by the team" : `Found at ${distance(selected.foundAt)}`} · {selected.rarity}{currentPath ? ` · ${currentPath.name}` : ""}</small></> : <div className="workshop-starter-effect"><b>+5%</b><span>{STAT_NAMES[recipe.stat]}<small>{game.trial ? "Built for your next experiment." : "Automatically fitted when you build it."}</small></span></div>}</div></div>
+          {selected && tuning && <section className="workshop-tuning"><div className="workshop-section-heading"><div><span className="eyebrow">FIRST MODIFICATION</span><h3>How should this component perform?</h3></div><small>Choose one permanent fit</small></div><div className="workshop-fit-options" role="radiogroup" aria-label="Equipment specialization">{visibleGearPaths(selected).map((p) => {
+            const preview = quoteUpgrade({ ...game, trial: null }, selected.id, 5, p.id);
+            return <button key={p.id} role="radio" aria-checked={path === p.id} className={path === p.id ? "selected" : ""} disabled={active} onClick={() => choosePath(p.id)}><div><b>{p.name}</b><span>{number(preview.cost)} vouchers</span></div><p>{p.description}</p>{preview.gear && <GearStats gear={preview.gear} compare={selected} changesOnly />}<small>{path === p.id ? "Selected ✓" : "Choose this fit"}</small></button>;
+          })}</div></section>}
+          {selected && !tuning && level < cap && quote?.gear && <section className="workshop-next-build"><div className="workshop-section-heading"><div><span className="eyebrow">{goal === milestone?.level ? "HARDWARE BREAKTHROUGH" : "IMPROVE THIS COMPONENT"}</span><h3>{goal === milestone?.level ? milestone.name : currentPath ? `Refine ${currentPath.name.toLowerCase()}` : "Refine this component"}</h3></div><small>Lv {level} → {quote.level}</small></div><GearStats gear={quote.gear} compare={selected} changesOnly />{era >= 2 && <div className="workshop-batch" aria-label="Upgrade quantity">{[["stage", "Next breakthrough"], ["five", "+5 levels"], ["one", "+1 level"]].map(([id, label]) => <button key={id} className={batch === id ? "selected" : ""} disabled={active} onClick={() => setBatch(id)}>{label}</button>)}</div>}</section>}
+          {selected && level >= cap && level < 200 && <div className="workshop-cap-goal"><b>Ready for new hardware</b><p>{milestone ? `${milestone.name} opens with ${ERA_NAMES[era + 1]}.` : `${ERA_NAMES[era + 1]} opens the next upgrade range.`}</p>{onFunding && <button className="text-button" onClick={onFunding}>View the next facility →</button>}</div>}
+          {selected && alternative && alternate && !alternate.blocked && <div className="workshop-alternate"><div><b>Build an alternative: {alternative.name}</b><p>{alternative.description} Keep both builds and fit one before each experiment.</p></div><button className="secondary" disabled={game.vouchers < alternate.cost} onClick={() => { const id = "gear-" + game.nextGear; setGame((s) => craftAlternate(s, program, slot, alternative.id)); select(id); showStored(true); }}>Build alternative · {number(alternate.cost)} vouchers</button></div>}
         </div>
-        <footer className="workshop-controls"><div className="workshop-upgrade-control"><div className="workshop-buy-size" aria-label="Upgrade quantity">{[["one", "+1 level"], ["five", "+5 levels"], ["milestone", "To next stage"]].map(([id, label]) => <button key={id} className={target === id ? "active" : ""} disabled={level >= cap || activeComponent} onClick={() => setTarget(id)}>{label}</button>)}</div><button className="primary" disabled={!quote?.levels || !!quote.blocked || game.vouchers < quote.cost} onClick={() => setGame((s) => upgradeGearTo(s, selected.id, goal, selected.upgradePath ? undefined : path))}>{level >= 200 ? "Fully overclocked" : level >= cap ? "Development required" : activeComponent ? "Component in active experiment" : needsPath && !path ? "Choose an enhancement path" : `Upgrade · ${number(quote?.cost ?? 0)} vouchers`}</button></div><div className="workshop-equip-control"><button className="secondary" disabled={!!game.trial} onClick={() => setGame((s) => equipGear(s, selected.id))}>{equipped ? "Unequip" : old ? "Replace equipped item" : "Equip component"}</button>{!equipped && (recycle ? <span className="workshop-recycle"><button className="text-button" disabled={!!game.trial} onClick={() => { setGame((s) => salvageGear(s, selected.id)); setRecycle(false); }}>Confirm · +{selected.affixes.length * 5} RP</button><button className="text-button" onClick={() => setRecycle(false)}>Keep</button></span> : <button className="text-button" disabled={!!game.trial} onClick={() => setRecycle(true)}>Recycle</button>)}</div></footer>
-      </article> : <article className="workshop-empty"><Glyph name="gear" /><h2>Start with one useful component.</h2><p>{CRAFT_CATALOG[program].footwear.description}</p><p>A component gains new stats and changes hardware at levels 10, 25, 50, 75 and 100. Development facilities open the next range of levels.</p>{onFunding && <button className="primary" onClick={onFunding}>Get equipment vouchers →</button>}</article>}
+        <footer className="workshop-controls">{!selected ? <><div><b>{recipe.cost} equipment vouchers</b><small>{game.vouchers < recipe.cost ? `${recipe.cost - game.vouchers} more needed` : game.trial ? "Built for your next experiment." : "Fitted automatically."}</small></div><button className="primary" disabled={!!craftRequirement(game, program, slot) || game.vouchers < recipe.cost} onClick={build}>Build {recipe.name} · {recipe.cost} vouchers</button></> : <><div className="workshop-purchase"><button className="primary" disabled={active || !quote?.levels || !!quote.blocked || game.vouchers < quote.cost} onClick={improve}>{active ? "Finish this experiment first" : level >= 200 ? "Fully upgraded" : level >= cap ? "Next facility required" : tuning && !path ? "Choose a fit above" : `${tuning ? "Install " + visibleGearPaths(selected).find((p) => p.id === path)?.name : "Improve component"} · ${number(quote?.cost ?? 0)} vouchers`}</button>{quote && quote.cost > game.vouchers && !quote.blocked && <small>{number(quote.cost - game.vouchers)} more vouchers needed</small>}</div>{!equipped && <div className="workshop-fit-control"><button className="secondary" disabled={!!game.trial} onClick={() => setGame((s) => equipGear(s, selected.id))}>{old ? "Fit instead" : "Fit component"}</button>{recycle ? <span><button className="text-button" disabled={!!game.trial} onClick={() => { setGame((s) => salvageGear(s, selected.id)); setRecycle(false); select(null); }}>Recycle for {selected.affixes.length * 5} RP</button><button className="text-button" onClick={() => setRecycle(false)}>Keep</button></span> : <button className="text-button" disabled={!!game.trial} onClick={() => setRecycle(true)}>Recycle</button>}</div>}</>}</footer>
+      </article>
     </div>
   </section>;
 }
+
+
+

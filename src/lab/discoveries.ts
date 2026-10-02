@@ -21,14 +21,14 @@ export const RUNNER: Discovery[][] = [
     ],
     [
       "Long, slow training",
-      "Build an economical stride. Running uses less energy, but the comfortable pace is slightly slower.",
-      { economy: 0.22, speed: -0.05 },
+      "Practise relaxed distance runs. Every stride uses less energy at the same pace.",
+      { economy: 0.22 },
       "lungs",
     ],
     [
       "Interval training",
-      "Short, hard sessions build a larger reserve. The stronger stride costs a little more energy.",
-      { stamina: 0.3, economy: -0.08 },
+      "Alternate short efforts with easy jogging. Ellis regains stamina faster when you switch to Recover pace.",
+      { recovery: 0.35 },
       "wave",
     ],
     [
@@ -73,8 +73,8 @@ export const RUNNER: Discovery[][] = [
     ],
     [
       "Quiet footfall",
-      "Land softly to save energy. The careful stride takes slightly longer to regain speed.",
-      { economy: 0.24, acceleration: -0.08 },
+      "Place each foot securely on uneven ground. Better grip reduces the slowdown through roadworks and rough trail sections.",
+      { traction: 0.3 },
       "foot",
     ],
     [
@@ -126,10 +126,10 @@ export const RUNNER: Discovery[][] = [
       "shoe",
     ],
     [
-      "Carbon racing soles",
-      "A stiff spring plate gives a faster stride, but the unforgiving ride builds fatigue sooner. Choose speed over comfort.",
-      { speed: 0.22, resilience: -0.12 },
-      "spring",
+      "Blister prevention",
+      "Test cushioning and fit before a long run. Comfortable feet slow the buildup of fatigue, so Ellis can hold his pace for longer.",
+      { resilience: 0.32 },
+      "foot",
     ],
     [
       "Ventilated trail kit",
@@ -766,7 +766,7 @@ RUNNER.push(
     t("Neural movement bus", "Implanted connections coordinate the bionic joints without biological signalling delays.", { traction: .08 }, "wave", { speed: 1.08, acceleration: 1.05 }),
     t("Reinforced skeleton", "A synthetic frame carries the loads from much faster strides.", { resilience: .12 }, "hex", { speed: 1.1 }),
     t("Inertial limb actuators", "Actuators manage acceleration loads inside each limb, enabling another step in speed.", { cooling: .1 }, "orbit", { speed: 1.15 }),
-    t("Metric stride", "A laboratory field changes the effective stride distance without cycling the legs fifteen times faster.", {}, "infinity", { speed: 15, acceleration: 4 }, 1),
+    t("Metric stride", "A laboratory field extends each stride beyond the distance the legs physically travel.", {}, "infinity", { speed: 18, acceleration: 4 }, 1),
   ],
   [
     t("Split-time notes", "Record each route section to improve experience from a run.", { xp: .06 }, "book"),
