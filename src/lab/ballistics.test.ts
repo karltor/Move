@@ -70,4 +70,43 @@ describe("ballistic trajectories", () => {
     expect(b.y).toBeGreaterThan(100);
     expect(landed(high, 0.5).y).toBe(0);
   });
+  it("solves million-second gravity arcs exactly without a tiny-step loop", () => {
+    const high = { ...config, speed: 7_560_000, angle: 65, height: 1 };
+    const vertical = high.speed * Math.sin(high.angle * Math.PI / 180),
+      horizontal = high.speed * Math.cos(high.angle * Math.PI / 180),
+      time = (vertical + Math.sqrt(vertical * vertical + 2 * 9.81 * high.height)) / 9.81;
+    const b = advanceFlight(launchFlight(initialBallistic(), high), 1e8, high);
+    expect(b.phase).toBe("landed");
+    expect(b.y).toBe(0);
+    expect(b.phaseTime / time).toBeCloseTo(1, 12);
+    expect(b.x / (horizontal * time)).toBeCloseTo(1, 12);
+  });
+  it("keeps accelerated high-energy drag trajectories consistent across tick sizes", () => {
+    const high = { ...config, speed: 7_560_000, angle: 65, height: 1, drag: 6.54e-10 };
+    const atRate = (h: number) => {
+      let b = launchFlight(initialBallistic(), high);
+      for (let i = 0; i < 2000 && b.phase === "flight"; i++) b = advanceFlight(b, h, high);
+      expect(b.phase).toBe("landed");
+      return b;
+    };
+    const fine = atRate(100), coarse = atRate(10_000), prediction = predictFlight(high);
+    expect(coarse.x / fine.x).toBeCloseTo(1, 4);
+    expect(coarse.phaseTime / fine.phaseTime).toBeCloseTo(1, 4);
+    expect(prediction.range / fine.x).toBeCloseTo(1, 4);
+    expect(prediction.duration / fine.phaseTime).toBeCloseTo(1, 4);
+    expect(prediction.points.length).toBeGreaterThanOrEqual(256);
+    expect(prediction.points[prediction.points.length - 1]!.y).toBe(0);
+  });
+  it("lands finite forward-moving shots across extreme drag without reversing their horizontal velocity", () => {
+    for (const drag of [1e-12, 1e-9, 1e-7, 1e-5, .0035, 2]) {
+      const high = { ...config, speed: 7_560_000, angle: 65, height: 1, drag };
+      const b = advanceFlight(launchFlight(initialBallistic(), high), 1e8, high);
+      expect(b.phase).toBe("landed");
+      expect(b.y).toBe(0);
+      expect(b.x).toBeGreaterThan(0);
+      expect(b.vx).toBeGreaterThanOrEqual(0);
+      expect(b.vy).toBeLessThan(0);
+      expect([b.x, b.y, b.vx, b.vy, b.phaseTime].every(Number.isFinite)).toBe(true);
+    }
+  });
 });

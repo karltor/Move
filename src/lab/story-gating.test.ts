@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { rollGear } from "./equipment";
-import { fresh, restore } from "./game";
-import { initializeSkillGuides, nextStory, storyDefinition } from "./Story";
+import { fresh, restore, start, step } from "./game";
+import { initializeSkillGuides, nextStory, storyDefinition, storySimulationRate } from "./Story";
 
 describe("equipment story follows the equipment unlock", () => {
-  it("keeps an imported early item without introducing equipment too soon", () => {
+  it("explains the workshop when imported equipment makes it available", () => {
     const save = fresh();
     save.storySeen = ["intro", "research", "forest"];
     save.progress.runner.trials = 1;
@@ -12,20 +12,71 @@ describe("equipment story follows the equipment unlock", () => {
     save.inventory = [rollGear("runner", 240, 44, 1).gear];
     const loaded = restore(JSON.stringify(save));
     expect(loaded.inventory).toHaveLength(1);
-    expect(nextStory(loaded, "field")).toBeNull();
-    loaded.progress.runner.trials = 4;
     expect(nextStory(loaded, "field")).toBe("equipment");
   });
 
-  it("requires distance as well as completed runs before showing an equipment tip", () => {
+  it("opens the workshop guide after two trials or voucher funding, without needing a random drop", () => {
     const save = fresh();
     save.storySeen = ["intro", "research", "forest"];
-    save.progress.runner.trials = 5;
-    save.progress.runner.bestDistance = 199;
-    save.inventory = [rollGear("runner", 100, 44, 1).gear];
+    save.progress.runner.trials = 1;
     expect(nextStory(save, "field")).toBeNull();
-    save.progress.runner.bestDistance = 200;
+    save.progress.runner.trials = 2;
     expect(nextStory(save, "field")).toBe("equipment");
+    save.progress.runner.trials = 0;
+    save.vouchers = 1;
+    expect(nextStory(save, "field")).toBe("equipment");
+  });
+});
+
+describe("funding and development explanations", () => {
+  it("introduces the three RP spending routes at the first debrief", () => {
+    const save = fresh();
+    save.storySeen = ["intro"];
+    save.progress.runner.trials = 1;
+    save.debriefPending = true;
+    expect(nextStory(save, "funding")).toBe("funding");
+    const text = storyDefinition("funding", save).pages.flat().join(" ");
+    expect(text).toContain("Talent Points");
+    expect(text).toContain("equipment vouchers");
+    expect(text).toContain("development project");
+    expect(text).not.toContain("Endurance");
+    save.storySeen.push("funding");
+    expect(nextStory(save, "funding")).toBeNull();
+  });
+  it("introduces the newly funded era once without replaying older era tips", () => {
+    const save = fresh();
+    save.storySeen = ["intro", "research", "funding", "equipment"];
+    save.development.athletics = 1;
+    const initialized = initializeSkillGuides(save);
+    expect(nextStory(initialized, "development")).toBeNull();
+    initialized.development.biomechanics = 1;
+    expect(nextStory(initialized, "development")).toBe("era:2");
+    expect(storyDefinition("era:2", initialized).pages[0][1]).toContain("level 49");
+    initialized.storySeen.push("era:2");
+    expect(nextStory(initialized, "development")).toBeNull();
+    initialized.development["supply-lab"] = 1;
+    expect(nextStory(initialized, "development")).toBe("project:supply-lab");
+  });
+  it("keeps both runner and projectile simulations advancing at half speed under a story", () => {
+    for (const program of ["runner", "projectile"] as const) {
+      const save = fresh();
+      save.program = program;
+      if (program === "projectile") save.unlocked.push(program);
+      const begun = start(save, 123);
+      const normal = step(begun, 0.1 * storySimulationRate(null));
+      const reading = step(begun, 0.1 * storySimulationRate("intro"));
+      expect(reading.trial!.time).toBeGreaterThan(0);
+      expect(reading.trial!.time).toBeCloseTo(normal.trial!.time / 2, 8);
+      if (program === "runner") expect(reading.trial!.distance).toBeGreaterThan(0);
+      else expect(reading.trial!.ballistic).toBeDefined();
+    }
+  });
+  it("explains shared RP without promising retired program currencies", () => {
+    const save = fresh();
+    save.unlocked.push("projectile");
+    const text = storyDefinition("programs", save).pages.flat().join(" ");
+    expect(text).toContain("RP, Talent Points and equipment vouchers are shared");
+    expect(text).not.toMatch(/Endurance|Impulse|Torque/);
   });
 });
 

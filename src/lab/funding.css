@@ -1,0 +1,76 @@
+.funding-app > main { overflow: hidden; padding: 14px 20px 18px; }
+.funding-page { width: 100%; max-width: 1600px; margin: 0 auto; height: 100%; display: flex; flex-direction: column; min-height: 0; }
+.funding-heading { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-bottom: 18px; flex-shrink: 0; }
+.funding-heading h1 { font-size: 28px; }
+.funding-heading p { margin-top: 7px; font-size: 13px; }
+.funding-bank { background: #e6f0e9; border: 1px solid #b9d1c0; border-radius: 10px; padding: 14px 20px; min-width: 150px; color: #254e37; }
+.funding-bank span { display: block; font-size: 9px; letter-spacing: 1.5px; font-weight: 700; }
+.funding-bank strong { font: 800 36px/1.2 Manrope,sans-serif; }
+.funding-balances { display: flex; align-items: center; gap: 24px; padding: 10px 0 18px; color: #4a6153; font-size: 12px; flex-shrink: 0; }
+.funding-balances b { color: #263e30; font-size: 17px; margin-right: 4px; }
+.funding-balances button { margin-left: auto; }
+.funding-routes { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 18px; align-items: stretch; }
+.funding-route { display: flex; flex-direction: column; gap: 12px; padding: 23px; background: #fff; border: 1px solid #c8d5cc; border-top: 4px solid #4c8062; border-radius: 12px; }
+.funding-route.voucher-route { border-top-color: #b47c36; }
+.funding-route.development-route { border-top-color: #5976a3; }
+.funding-route-heading { display: flex; align-items: center; gap: 9px; font-size: 9px; letter-spacing: 1px; font-weight: 700; color: #596e60; }
+.funding-route-heading svg { width: 29px; height: 29px; }
+.funding-route h2 { font-size: 21px; }
+.funding-route p { font-size: 12px; min-height: 58px; }
+.funding-quote { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 8px; padding: 14px 0; border-top: 1px solid #e0e7e2; border-bottom: 1px solid #e0e7e2; }
+.funding-quote strong { font: 800 36px/1.1 Manrope,sans-serif; color: #315743; }
+.voucher-route .funding-quote strong { color: #88602c; }
+.development-route .funding-quote strong { color: #3e5c8d; }
+.funding-quote > span { font-size: 12px; font-weight: 600; }
+.funding-quote small { flex-basis: 100%; color: #53675a; font-size: 11px; }
+.funding-affordability { display: flex; flex-direction: column; gap: 4px; font-size: 12px; margin-bottom: 6px; }
+.funding-affordability > span { color: #5f7165; font-size: 10px; }
+.funding-route .primary { width: 100%; margin-top: auto; }
+.funding-route > small { font-size: 10px; text-align: center; }
+.funding-modal { margin: auto; width: min(1120px,calc(100vw - 64px)); max-height: calc(100dvh - 40px); border: 1px solid #b9cfc0; border-radius: 15px; padding: 24px 28px; background: #f8faf7; color: #293b30; box-shadow: 0 24px 80px #17372930; }
+.funding-receipt { display: flex; gap: 14px; align-items: center; margin-bottom: 18px; padding: 10px 14px; background: #e3eee7; border-radius: 7px; font-size: 12px; color: #355742; }
+.funding-receipt small { margin-left: auto; font-size: 10px; }
+.funding-modal .funding-heading { margin-bottom: 10px; }
+.funding-modal .funding-page { height: auto; }
+.funding-modal::backdrop { background: #1b302855; backdrop-filter: blur(2px); }
+.funding-modal .funding-balances { padding-bottom: 12px; }
+.funding-modal .funding-route { padding: 17px; gap: 9px; }
+.funding-modal .funding-route h2 { font-size: 19px; }
+.funding-modal .funding-route p { min-height: 56px; }
+.funding-modal .funding-quote { padding: 11px 0; }
+.funding-dismiss { display: flex; align-items: center; justify-content: space-between; gap: 22px; margin-top: 18px; }
+.funding-dismiss > span { max-width: 480px; font-size: 11px; color: #5e7062; }
+.funding-dismiss .secondary { white-space: nowrap; }
+.development-projects { flex: 1; min-height: 0; overflow: auto; padding-right: 8px; }
+.development-era { display: flex; align-items: center; gap: 9px; margin: 6px 0 20px; font-size: 12px; color: #586c60; }
+.development-era svg { width: 21px; height: 21px; }
+.development-era b { color: #314e3c; }
+.development-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 16px; }
+.development-card { display: flex; flex-direction: column; gap: 12px; border: 1px solid #ced9d1; border-radius: 11px; padding: 20px; background: #fff; }
+.development-card.ready { border-color: #82af90; box-shadow: inset 0 3px #659773; }
+.development-card.completed { background: #eef4ee; }
+.development-card-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 10px; color: #5c7263; }
+.development-card-top b { white-space: nowrap; }
+.development-card h2 { font-size: 19px; }
+.development-card p { font-size: 12px; }
+.development-stage-track { display: flex; gap: 5px; }
+.development-stage-track i { flex: 1; height: 6px; background: #dce5df; border-radius: 3px; }
+.development-stage-track i.complete { background: #619777; }
+.development-requirements { margin: 0; padding-left: 15px; font-size: 11px; color: #866330; line-height: 1.6; }
+.development-card button { margin-top: auto; }
+.cheat-controls { padding: 18px; margin-bottom: 20px; border: 1px dashed #b6c8ba; border-radius: 9px; background: #f1f7f0; }
+.cheat-controls h3 { margin-bottom: 6px; }
+.cheat-controls p { font-size: 12px; }
+.cheat-controls label { display: flex; align-items: center; justify-content: space-between; margin: 14px 0 8px; font-size: 12px; }
+.cheat-controls output { font-size: 18px; font-weight: 700; color: #315c3f; }
+.cheat-controls input { width: 100%; accent-color: #54846a; }
+.cheat-ticks { display: flex; justify-content: space-between; font-size: 9px; color: #69806f; margin: 3px 0 15px; }
+.settings-app > main { overflow: hidden; display: flex; flex-direction: column; gap: 12px; padding: 14px 20px 18px; }
+.settings-app .replay-story { align-self: flex-start; margin: 0; flex-shrink: 0; }
+.settings-app .guide { flex: 1; min-height: 0; overflow: hidden; grid-template-columns: minmax(0,1.25fr) minmax(340px,1fr); gap: 35px; padding: 22px; }
+.settings-app .guide > div, .settings-app .guide > aside { min-height: 0; overflow: auto; padding-right: 12px; }
+.settings-app .guide-steps article { margin: 18px 0; }
+.settings-app .guide h2 { font-size: 24px; margin-bottom: 12px; }
+.settings-app .guide p { font-size: 12px; margin-bottom: 12px; }
+@media (max-height:800px) { .funding-modal { padding: 18px 22px; } .funding-modal .funding-heading h1 { font-size: 25px; } .funding-modal .funding-route { padding: 15px; gap: 8px; } .funding-modal .funding-quote strong { font-size: 30px; } .funding-modal .funding-receipt { margin-bottom: 12px; } }
+@media (min-width:900px) and (max-width:1400px) { .app-header { gap: 22px; padding: 0 20px; } .app-header nav { gap: 0; } .app-header nav button { padding: 0 12px; } .app-header .wordmark span { display: none; } .app-header .wallet > span { display: none; } }

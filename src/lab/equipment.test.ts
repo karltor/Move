@@ -82,15 +82,16 @@ describe("equipment drops and progressive features", () => {
     expect(loaded.trial!.nextDrop).toBe(s.trial!.nextDrop);
     expect(random(loaded.trial!.rng)).toEqual(random(s.trial!.rng));
   });
-  it("never drops gear before the expedition milestone, even on a long recovery run", () => {
+  it("keeps the first expedition clear, then opens the workshop through runs or funding", () => {
     let s = start({ ...fresh(), pace: "recover" }, 12);
     for (let i = 0; i < 220 && s.trial; i++) s = step(s, 0.5);
     expect(s.inventory).toHaveLength(0);
     const base = fresh();
-    base.progress.runner.trials = 4;
+    base.progress.runner.trials = 1;
     expect(equipmentUnlocked(base)).toBe(false);
-    base.progress.runner.bestDistance = 200;
+    base.progress.runner.trials = 2;
     expect(equipmentUnlocked(base)).toBe(true);
+    expect(equipmentUnlocked({ ...fresh(), vouchers: 1 })).toBe(true);
   });
   it("validates imports, keeps loadouts across refresh, and separates programs", () => {
     let s = fresh();

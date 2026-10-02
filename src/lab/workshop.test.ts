@@ -1,0 +1,139 @@
+import { describe, expect, it } from "vitest";
+import { fresh, restore, start, equipGear, stats, type Save } from "./game";
+import { CRAFT_CATALOG, craftGear, effectiveBonus, nextMilestone, quoteUpgrade, stageLevelCap, upgradeCost, upgradeGear, upgradeGearTo, upgradeRequirement } from "./workshop";
+import { GEAR_LEVEL_CAP, SLOTS, gearEffects, gearMultipliers, gearPaths, gearStage, validateGear } from "./equipment";
+import { DEVELOPMENT_PROJECTS } from "./development";
+import type { Program } from "./research";
+
+function workshop(program: Program = "runner", era = 0): Save {
+  return { ...fresh(), vouchers: 10000000, unlocked: ["runner", "projectile", "wheels"], program, development: Object.fromEntries(DEVELOPMENT_PROJECTS.filter((p) => p.opensEra && p.opensEra <= era).map((p) => [p.id, 1])) };
+}
+function built(program: Program = "runner", era = 0) {
+  return craftGear(workshop(program, era), program, "footwear");
+}
+
+describe("equipment workshop", () => {
+  it("builds deterministic, relevant starters for exactly two vouchers", () => {
+    for (const program of ["runner", "projectile", "wheels"] as Program[]) {
+      let s = workshop(program);
+      for (const slot of SLOTS) {
+        const balance = s.vouchers, serial = s.nextGear;
+        s = craftGear(s, program, slot);
+        const item = s.inventory[s.inventory.length - 1];
+        expect(s.vouchers).toBe(balance - 2);
+        expect(item.id).toBe("gear-" + serial);
+        expect(item.affixes).toEqual([{ stat: CRAFT_CATALOG[program][slot].stat, value: .05 }]);
+        expect(s.nextGear).toBe(serial + 1);
+        expect(s.equipped).not.toContain(item.id);
+      }
+    }
+    const s = { ...fresh(), vouchers: 1 };
+    expect(craftGear(s, "runner", "footwear")).toBe(s);
+    expect(craftGear({ ...s, vouchers: 100 }, "projectile", "footwear").inventory).toHaveLength(0);
+    const full = { ...workshop(), inventory: Array.from({ length: 90 }, (_, i) => ({ ...built().inventory[0], id: "gear-" + i })) };
+    expect(craftGear(full, "runner", "outfit")).toBe(full);
+  });
+  it("ties component transformations to facility eras instead of unrestricted income", () => {
+    expect(Array.from({ length: 7 }, (_, era) => stageLevelCap(workshop("runner", era)))).toEqual([9, 24, 49, 74, 99, 100, 200]);
+    let s = built();
+    const id = s.inventory[0].id;
+    s = upgradeGearTo(s, id, 100, "kinetic");
+    expect(s.inventory[0].upgradeLevel).toBe(9);
+    expect(upgradeGear(s, id)).toBe(s);
+    expect(upgradeRequirement(s, id)).toMatch(/Athletic science.*10/);
+    s = { ...s, development: workshop("runner", 1).development };
+    s = upgradeGear(s, id);
+    expect(s.inventory[0].name).toBe("Carbon stride boots");
+    expect(gearStage(s.inventory[0])).toBe(1);
+    expect(Object.keys(gearEffects(s.inventory[0]))).toContain("acceleration");
+    expect(nextMilestone(s.inventory[0])?.level).toBe(25);
+  });
+  it("requires a permanent specialization and keeps its real stat tradeoff", () => {
+    const s = upgradeGearTo(built(), "gear-1", 4);
+    const id = s.inventory[0].id;
+    expect(upgradeGear(s, id)).toBe(s);
+    expect(upgradeGear(s, id, "unknown")).toBe(s);
+    const power = upgradeGear(s, id, "kinetic"), distance = upgradeGear(s, id, "distance");
+    expect(power.inventory[0].upgradeLevel).toBe(5);
+    expect(effectiveBonus(power.inventory[0], "speed")).toBeGreaterThan(effectiveBonus(distance.inventory[0], "speed"));
+    expect(effectiveBonus(power.inventory[0], "economy")).toBeLessThan(0);
+    expect(effectiveBonus(distance.inventory[0], "economy")).toBeGreaterThan(0);
+    expect(upgradeGear(power, id, "distance")).toBe(power);
+    expect(upgradeGearTo(power, id, 9, "distance")).toBe(power);
+    for (const program of ["runner", "projectile", "wheels"] as Program[]) for (const slot of SLOTS) {
+      const item = craftGear(workshop(program), program, slot).inventory[0];
+      expect(gearPaths(item)).toHaveLength(2);
+      for (const path of gearPaths(item)) {
+        expect(Object.values(path.effects).some((v) => v! < 0)).toBe(true);
+        expect(Object.values(path.effects).some((v) => v! > 0)).toBe(true);
+      }
+    }
+  });
+  it("quotes exact total prices and batch purchases spend resources atomically", () => {
+    let individual = built("runner", 6);
+    const id = individual.inventory[0].id, initial = individual.vouchers;
+    const batch = upgradeGearTo(individual, id, 100, "kinetic"), quote = quoteUpgrade(individual, id, 100, "kinetic");
+    for (let i = 1; i <= 100; i++) individual = upgradeGear(individual, id, i === 5 ? "kinetic" : undefined);
+    expect(batch.inventory).toEqual(individual.inventory);
+    expect(batch.vouchers).toBe(individual.vouchers);
+    expect(quote.cost).toBe(initial - batch.vouchers);
+    expect(quote.levels).toBe(100);
+    const poor = { ...built("runner", 6), vouchers: quote.cost - 1 };
+    expect(upgradeGearTo(poor, id, 100, "kinetic")).toBe(poor);
+    const one = upgradeGear(built(), id);
+    expect(one.vouchers).toBe(initial - 1);
+  });
+  it("supports centuries of ranks with increasingly costly, high-magnitude hardware", () => {
+    const s = built("runner", 6), id = s.inventory[0].id;
+    const rank100 = upgradeGearTo(s, id, 100, "kinetic"), rank200 = upgradeGearTo(rank100, id, 200);
+    expect(GEAR_LEVEL_CAP).toBe(200);
+    expect(gearMultipliers(rank100.inventory[0]).speed).toBe(700);
+    expect(gearMultipliers(rank200.inventory[0]).speed).toBeCloseTo(700 * Math.pow(1.015, 100));
+    const overclockGain = gearMultipliers(rank200.inventory[0]).speed! / gearMultipliers(rank100.inventory[0]).speed!;
+    expect(overclockGain).toBeGreaterThan(4);
+    expect(overclockGain).toBeLessThan(4.5);
+    for (const program of ["projectile", "wheels"] as Program[]) {
+      const stat = program === "projectile" ? "launchSpeed" : "speed";
+      const item = { ...rank100.inventory[0], program };
+      expect(gearMultipliers(item)[stat]).toBe(8);
+      expect(gearMultipliers({ ...item, upgradeLevel: 200 })[stat]! / gearMultipliers(item)[stat]!).toBeCloseTo(overclockGain);
+      expect([10, 25, 50, 75, 100].map((upgradeLevel) => gearMultipliers({ ...item, upgradeLevel })[stat])).toEqual([1.15, 1.8, 3, 5, 8]);
+    }
+    expect(rank200.inventory[0].era).toBe(6);
+    expect(rank200.inventory[0].name).toContain("overclock 100");
+    expect(upgradeGear(rank200, id)).toBe(rank200);
+    expect(stats(equipGear(rank100, id)).speed).toBeGreaterThan(stats(fresh()).speed * 1000);
+    const at = (level: number) => upgradeCost({ ...s, inventory: [{ ...s.inventory[0], upgradeLevel: level, upgradePath: "kinetic" }] }, id);
+    expect(at(0)).toBe(1);
+    expect(at(99)).toBeGreaterThan(900);
+    expect(at(100)).toBeGreaterThan(at(99));
+    expect(at(199)).toBeGreaterThan(at(100));
+  });
+  it("keeps projectiles on launch and flight stats throughout every upgrade stage", () => {
+    const flight = new Set(["launchSpeed", "drag", "lift", "stability", "reload", "payload", "yield", "xp"]);
+    for (const slot of SLOTS) {
+      const s = craftGear(workshop("projectile", 6), "projectile", slot), item = s.inventory[0];
+      const up = upgradeGearTo(s, item.id, 200, gearPaths(item)[0].id).inventory[0];
+      expect(Object.keys(gearEffects(up)).every((key) => flight.has(key))).toBe(true);
+      expect(Object.keys(gearMultipliers(up)).every((key) => flight.has(key))).toBe(true);
+      expect(up.name).not.toMatch(/shoes|legs|organs|stamina|vest/i);
+    }
+  });
+  it("does workshop work during an experiment without mutating its active components", () => {
+    let s = built(), id = s.inventory[0].id;
+    s = start(equipGear(s, id), 10);
+    expect(upgradeGear(s, id)).toBe(s);
+    expect(upgradeGearTo(s, id, 4)).toBe(s);
+    const spare = craftGear(s, "runner", "outfit"), spareId = spare.inventory[1].id;
+    expect(spare.trial).toBe(s.trial);
+    expect(upgradeGear(spare, spareId).inventory[1].upgradeLevel).toBe(1);
+    expect(stats(upgradeGear(spare, spareId))).toEqual(stats(spare));
+    expect(equipGear(spare, spareId)).toBe(spare);
+  });
+  it("round-trips transformed equipment and rejects malformed enhancement metadata", () => {
+    const s = built("runner", 6), id = s.inventory[0].id;
+    const upgraded = upgradeGearTo(s, id, 200, "kinetic"), item = upgraded.inventory[0];
+    expect(restore(JSON.stringify(upgraded)).inventory).toEqual(upgraded.inventory);
+    expect(validateGear([item, { ...item, id: "bad-path", upgradePath: "distance-or-whatever" }, { ...item, id: "early-path", upgradeLevel: 4 }, { ...item, id: "no-path", upgradePath: undefined }, { ...item, id: "too-high", upgradeLevel: 201 }])).toEqual([item]);
+  });
+});

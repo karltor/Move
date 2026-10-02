@@ -141,7 +141,9 @@ export function createTerrain() {
     // Translate complete route cells. Their edges never morph sideways between frames.
     const origin = Math.floor(distance * 0.65);
     mesh.position.x = origin - distance * 0.65;
-    travel.value = origin;
+    // Keep fragment coordinates precise after multi-million-metre upgrades.
+    // 1000 is a full period for the repeating grain and paving frequencies.
+    travel.value = ((origin % 1000) + 1000) % 1000;
     if (origin === lastOrigin) return;
     lastOrigin = origin;
     for (let i = 0; i < 6; i++) {

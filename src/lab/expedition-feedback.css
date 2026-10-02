@@ -68,6 +68,7 @@
 .staging-dialog {
   width: min(820px, calc(100vw - 64px));
   max-height: calc(100dvh - 48px);
+  overflow-y: auto;
   margin: auto;
   padding: 28px 32px;
   border: 1px solid #c3d2c8;
@@ -156,6 +157,10 @@
   font-size: 12px;
 }
 .staging-actions {
+  position: sticky;
+  bottom: -22px;
+  background: #fdfefc;
+  padding: 12px 0;
   margin-top: 24px;
   display: flex;
   justify-content: flex-end;

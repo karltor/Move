@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { equipmentUnlocked, totalTrials, type Save } from "./game";
 import { NODE_MAP, PROGRAMS } from "./research";
+import { currentEra, ERA_NAMES } from "./development";
 type StoryDefinition = {
   tag: string;
   title: string;
@@ -39,31 +40,40 @@ export const STORIES = {
     button: "Continue the run",
   },
   research: {
-    tag: "The first field report",
-    title: "One test. One improvement.",
+    tag: "Talent training",
+    title: "Choose what Ellis learns.",
     pages: [
       [
         "DR. ELLIS",
-        "RP pays for permanent research. The first upgrades cost 15 RP each: a proper warm-up for 25% more stamina, or running-shoe research for 15% more top speed. Save enough for one, then test it on the next run before buying more.",
+        "Spend Talent Points on a new talent or another rank in a talent you already know. Select a node to see its next-rank effects and requirements. Follow a branch toward the abilities you want; its connecting lines show the route.",
       ],
       [
         "SANIK",
-        "Running also earns Endurance, the runner program's research currency, and XP. Levels improve your base fitness. Pick an upgrade for the problem you noticed on the road. My advice: keep both shoes.",
+        "Some branches ask you to choose a specialization. Read the trade-off before committing: extra speed can cost more energy. New development eras add powered joints, engineered organs and much faster ways to move. We are allowed to get ambitious.",
       ],
     ],
-    button: "Choose the first discovery",
+    button: "Explore talents",
+  },
+  funding: {
+    tag: "The first field report",
+    title: "Put the results to work.",
+    pages: [[
+      "SANIK",
+      "Every experiment earns RP. Convert it into Talent Points for permanent skills, equipment vouchers for gear, or save it for a development project. The funding screen shows exactly what each conversion buys. You can keep the RP and decide later.",
+    ]],
+    button: "Choose where to invest",
   },
   equipment: {
-    tag: "Equipment recovered",
-    title: "A useful field find.",
+    tag: "Equipment workshop",
+    title: "Build it. Improve it. Fit it.",
     pages: [
       [
         "DR. ELLIS",
-        "Equip finds before the next experiment. Each slot holds one item. Common gear has one modest bonus; rarer pieces can have several. Longer runs improve rarity odds, but a lucky find can appear early.",
+        "The workshop sells basic gear for equipment vouchers. Fit one item in each slot, then upgrade it over many levels. Check the next-level effects and cost before spending. You can also find equipment during experiments; longer runs improve the chance of rare finds.",
       ],
       [
         "SANIK",
-        "Runner shoes and outfits are visible on Ellis. Research stays active permanently; equipment only helps while fitted. We should probably wash the coat first.",
+        "Talents always apply; equipment applies while fitted. Runner shoes and outfits change Ellis's appearance. Projectile gear improves the launch rig or the projectile itself. Please leave the cannon in its own slot.",
       ],
     ],
     button: "Check the equipment",
@@ -74,7 +84,7 @@ export const STORIES = {
     pages: [
       [
         "DR. ELLIS",
-        "We've reached the country road. The projectile program becomes available after enough total distance and four runner discoveries. Its first experiment is a hand-thrown rock.",
+        "We've reached the country road. A longer route provides more data and RP. The next development projects will need distance records, talent ranks and upgraded gear as well as funding.",
       ],
       [
         "SANIK",
@@ -89,11 +99,11 @@ export const STORIES = {
     pages: [
       [
         "DR. ELLIS",
-        "Choose an unlocked program in the preparation popup before each experiment. Runner research uses Endurance, projectiles use Impulse, and wheels use Torque. RP is shared between programs.",
+        "Choose an unlocked program in preparation before each experiment. Your RP, Talent Points and equipment vouchers are shared, while each program keeps its own talents, equipment and training level.",
       ],
       [
         "SANIK",
-        "A projectile experiment launches six shots from a fixed station. Each landing earns RP and Impulse. Improve launch speed, drag and trajectory; there is no stamina bar for a rock.",
+        "A projectile experiment launches six shots from a fixed station. Each landing earns RP and XP. Improve launch speed, drag and trajectory; there is no stamina bar for a rock.",
       ],
     ],
     button: "Prepare an experiment",
@@ -104,24 +114,29 @@ export const STORIES = {
     pages: [
       [
         "DR. ELLIS",
-        "Ten kilometres. The desert route adds heat and stronger stamina demands. Heat-acclimation research reduces the desert's extra drain. We finally have a result worth showing the prize committee.",
+        "Ten kilometres. The desert route adds heat and stronger energy demands. Heat acclimation and cooling equipment help here. This distance record also brings bionic development closer.",
       ],
       ["SANIK", "Good. Now they'll have to read our application."],
     ],
     button: "Continue",
   },
 } satisfies Record<string, StoryDefinition>;
-export type StoryId = keyof typeof STORIES | `skill:${string}`;
+export type StoryId = keyof typeof STORIES | `skill:${string}` | `era:${number}` | "project:supply-lab";
+export const storySimulationRate = (story: StoryId | null) => story ? 0.5 : 1;
 /** Explain future purchases without interrupting old saves with a backlog. */
 export function initializeSkillGuides(save: Save): Save {
   const marker = "skill-guides-v1";
-  if (save.storySeen.includes(marker)) return save;
+  if (save.storySeen.includes(marker) && save.storySeen.includes("era-guides-v1")) return save;
   const existing = save.researched
     .filter((id) => NODE_MAP.get(id)?.ability)
     .map((id) => "skill:" + id);
   return {
     ...save,
-    storySeen: [...new Set([...save.storySeen, marker, ...existing])],
+    storySeen: [...new Set([
+      ...save.storySeen, marker, "era-guides-v1", ...existing,
+      ...Array.from({ length: currentEra(save) }, (_, i) => `era:${i + 1}`),
+      ...(save.development["supply-lab"] > 0 ? ["project:supply-lab"] : []),
+    ])],
   };
 }
 const SKILL_GUIDANCE: Record<string, string> = {
@@ -152,23 +167,36 @@ const SKILL_GUIDANCE: Record<string, string> = {
     "Predicted range appears in the ballistics readout. Change the launch angle and compare the estimate with the actual landing.",
 };
 export function storyDefinition(id: StoryId, game: Save): StoryDefinition {
+  if (id.startsWith("era:")) {
+    const era = Number(id.slice(4));
+    const details = [
+      "",
+      "The training clinic is open. Athletic talent chapters and carbon equipment are now available. Fund its coaching, data analysis or expedition support when those benefits fit your plans.",
+      "The biomechanics workshop is open. Assisted movement and organ monitoring add new talent paths. Equipment can now reach level 49.",
+      "Bionic integration is ready. Powered legs and implanted organs can multiply speed, rather than adding small fitness bonuses. Equipment can now reach level 74.",
+      "Synthetic physiology is ready. Engineered organs and thermal control support much higher speeds over longer distances. Equipment can now reach level 99.",
+      "The inertial chamber is open. Inertia control and plasma propulsion add another scale of movement. Equipment can now evolve through level 100.",
+      "The metric laboratory is open. Field-driven movement, the final talent chapter and repeatable equipment overclocking are available.",
+    ];
+    return { tag: "Development completed", title: ERA_NAMES[era] ?? "New development era", pages: [["DR. ELLIS", details[era] ?? "A new talent chapter is available."]], button: "Explore the new options" };
+  }
+  if (id === "project:supply-lab") return {
+    tag: "Field supplies prepared", title: "Three supplies for each run.",
+    pages: [["DR. ELLIS", "Running experiments now carry three stamina supplies. Press Use supply to restore energy, then wait for its cooldown before using another. Projectile launches do not use stamina or supplies."]], button: "Understood",
+  };
   if (id === "programs") {
-    const currencies = game.unlocked
-      .map((p) => PROGRAMS[p].short + ": " + PROGRAMS[p].currency)
-      .join(" · ");
+    const programs = game.unlocked.map((p) => PROGRAMS[p].short).join(" · ");
     return {
       ...STORIES.programs,
       pages: [
         [
           "DR. ELLIS",
-          "Choose an unlocked program in preparation before each experiment. RP is shared. Each program also earns its own research currency: " +
-            currencies +
-            ".",
+          "Choose an unlocked program in preparation before each experiment: " + programs + ". RP, Talent Points and equipment vouchers are shared. Each program keeps its own talent paths, fitted gear and training level.",
         ],
         [
           "SANIK",
           game.unlocked.includes("projectile")
-            ? "A projectile experiment launches six shots from a fixed station. Each landing earns RP and Impulse. Improve launch speed, drag and trajectory; a rock doesn't need stamina."
+            ? "A projectile experiment launches six shots from a fixed station. Each landing earns RP and XP. Improve launch speed, drag and trajectory; a rock doesn't need stamina."
             : "Each program keeps its own research and training. Choose the experiment you want to improve next.",
         ],
       ],
@@ -194,8 +222,12 @@ export function nextStory(s: Save, tab: string): StoryId | null {
   if (!s.tipsEnabled) return null;
   const seen = (id: StoryId) => s.storySeen.includes(id);
   if (!seen("intro")) return "intro";
+  if ((tab === "funding" || s.debriefPending) && totalTrials(s) > 0 && !seen("funding")) return "funding";
   if (tab === "research" && totalTrials(s) > 0 && !seen("research"))
     return "research";
+  const era = currentEra(s), eraStory = `era:${era}` as StoryId;
+  if (era > 0 && !seen(eraStory)) return eraStory;
+  if (s.development["supply-lab"] > 0 && !seen("project:supply-lab")) return "project:supply-lab";
   for (const id of s.researched) {
     const node = NODE_MAP.get(id),
       story = ("skill:" + id) as StoryId;
@@ -206,7 +238,7 @@ export function nextStory(s: Save, tab: string): StoryId | null {
     )
       return story;
   }
-  if (equipmentUnlocked(s) && s.inventory.length && !seen("equipment"))
+  if (equipmentUnlocked(s) && !seen("equipment"))
     return "equipment";
   if (s.unlocked.length > 1 && !seen("programs")) return "programs";
   // Distance milestones describe the running route, not a thrown object.
@@ -386,6 +418,7 @@ export default function Story({
         <h1>{story.title}</h1>
         <div className="speaker">{speaker}</div>
         <p>{text}</p>
+        {game.trial && <small className="story-running-note">Experiment continues at half speed while you read.</small>}
         <div className="story-progress">
           {story.pages.map((_, i) => (
             <i className={i === page ? "active" : ""} key={i} />

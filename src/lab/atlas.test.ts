@@ -1,185 +1,179 @@
-import { describe, it, expect } from "vitest";
-import {
-  fresh,
-  start,
-  step,
-  finish,
-  pendingRewards,
-  biomeBlend,
-  BIOMES,
-  stats,
-  hasAbility,
-  programDiscovered,
-  selectProgram,
-  restore,
-} from "./game";
-import { nextStory } from "./Story";
-import { NODES, STAT_LABELS } from "./research";
+import { describe, expect, it } from "vitest";
+import { fresh, research, available, stats, biomeBlend, BIOMES, talentRank, levelStart, start, step, finish, projectilePhysics, type Save } from "./game";
+import { DEVELOPMENT_PROJECTS } from "./development";
+import { NODES, NODE_MAP, LANES, VARIANTS, STAT_LABELS, type Program } from "./research";
 import { nodePosition } from "./ResearchPanel";
+import { craftGear, upgradeGear } from "./workshop";
+import { SLOTS, gearPaths } from "./equipment";
+import { initialBallistic, launchFlight, advanceFlight } from "./ballistics";
 
-describe("field report and new discoveries", () => {
-  it("banks exactly the displayed extra rewards, without adding paid milestones twice", () => {
-    let s = start(fresh());
-    for (let i = 0; i < 40; i++) s = step(s, 0.5);
-    expect(s.trial).not.toBeNull();
-    const reward = pendingRewards(s),
-      done = finish(s);
-    expect(done.science - s.science).toBe(reward.science);
-    expect(done.progress.runner.funds - s.progress.runner.funds).toBe(
-      reward.funds,
-    );
-    expect(done.progress.runner.xp - s.progress.runner.xp).toBe(reward.xp);
-    expect(reward.xp).toBe(0);
-    expect(done.history[0].xp).toBe(s.trial!.lastXP);
-    expect(done.history[0].science).toBe(reward.science);
-    expect(pendingRewards(done).science).toBe(0);
-    expect(finish(done)).toBe(done);
+function completePath(program: Program, mask: number, finalEra = 6) {
+  let s: Save = { ...fresh(), program, talentPoints: 1e9, unlocked: ["runner", "projectile", "wheels"] };
+  s.development = Object.fromEntries(DEVELOPMENT_PROJECTS.filter(p => p.opensEra && p.opensEra <= finalEra).map(p => [p.id, 1]));
+  const candidates = NODES.filter(n => n.program === program && (!n.choiceGroup || n.tier === (((mask >> n.lane) & 1) ? 5 : 4)));
+  for (let pass = 0; pass < 12; pass++) {
+    for (const n of candidates) if (!talentRank(s, n.id) && available(s, n.id)) s = research(s, n.id);
+  }
+  return s;
+}
+
+function evolvedBuild(program: Program, mask = 63) {
+  let s = completePath(program, mask);
+  for (const id of s.researched) s.talentRanks[id] = NODE_MAP.get(id)!.maxRank;
+  for (const n of NODES.filter(n => n.program === "global").sort((a, b) => a.tier - b.tier))
+    while (available(s, n.id)) s = research(s, n.id);
+  s.vouchers = 1e9;
+  s.progress[program].xp = levelStart(180);
+  s.progress[program].variant = program === "wheels" ? "rocket" : program === "projectile" ? "particle" : "runner";
+  for (const slot of SLOTS) {
+    s = craftGear(s, program, slot);
+    const item = s.inventory[s.inventory.length - 1]!;
+    const paths = gearPaths(item);
+    const path = paths[program === "wheels" && slot === "footwear" ? 1 : 0].id;
+    for (let rank = 1; rank <= 200; rank++) s = upgradeGear(s, item.id, rank === 5 ? path : undefined);
+    expect(s.inventory.find(g => g.id === item.id)!.upgradeLevel).toBe(200);
+    s.equipped.push(item.id);
+  }
+  return s;
+}
+function measuredRun(s: Save, pace: "steady" | "push") {
+  let run = start({ ...structuredClone(s), pace }, 123456);
+  for (let i = 0; run.trial && i < 600; i++) run = step(run, .5);
+  return finish(run).history[0];
+}
+
+describe("long-form talent progression", () => {
+  it("has six independent, twelve-tier paths in each program and 24 laboratory talents", () => {
+    expect(NODES).toHaveLength(240);
+    expect(new Set(NODES.map(n => n.id)).size).toBe(240);
+    expect(new Set(NODES.map(n => n.name)).size).toBe(240);
+    for (const program of ["runner", "projectile", "wheels"] as Program[]) {
+      expect(LANES[program]).toHaveLength(6);
+      for (let lane = 0; lane < 6; lane++) expect(NODES.filter(n => n.program === program && n.lane === lane)).toHaveLength(12);
+    }
+    expect(NODES.filter(n => n.program === "global")).toHaveLength(24);
+    expect(Object.keys(STAT_LABELS)).toHaveLength(22);
   });
-  it("makes the first shoes improve speed without introducing another stat", () => {
-    const ordinary = step(start(fresh()), 0.5),
-      shoes = step(start({ ...fresh(), researched: ["runner-2-0"] }), 0.5);
-    expect(shoes.trial!.speed).toBeGreaterThan(ordinary.trial!.speed);
-    expect(shoes.trial!.energy).toBe(ordinary.trial!.energy);
-    expect(stats(shoes).speed).toBeCloseTo(1.15);
-    expect(stats(shoes).economy).toBe(1);
+
+  it("never makes one path depend on a different column, including joins after a specialization", () => {
+    for (const n of NODES) for (const id of [...n.requires, ...(n.anyOf ?? [])]) {
+      const parent = NODE_MAP.get(id)!;
+      expect(parent).toBeDefined();
+      expect(parent.program).toBe(n.program);
+      expect(parent.lane).toBe(n.lane);
+      expect(parent.tier).toBeLessThan(n.tier);
+      expect(nodePosition(parent).x).toBe(nodePosition(n).x);
+    }
   });
-  it("makes wind, recovery, acceleration and fatigue resistance affect the simulation", () => {
-    const base = start(fresh());
-    base.trial!.energy = 50;
-    const normal = step(base, 0.5),
-      wind = step({ ...base, researched: ["runner-3-0"] }, 0.5),
-      accel = step({ ...base, researched: ["runner-1-0"] }, 0.5),
-      resist = step({ ...base, researched: ["runner-2-2"] }, 0.5);
-    expect(wind.trial!.speed).toBeGreaterThan(normal.trial!.speed);
-    expect(accel.trial!.speed).toBeGreaterThan(normal.trial!.speed);
-    expect(resist.trial!.fatigue).toBeLessThan(normal.trial!.fatigue);
-    expect(
-      step({ ...base, pace: "recover", researched: ["runner-0-3"] }, 0.5).trial!
-        .energy,
-    ).toBeGreaterThan(step({ ...base, pace: "recover" }, 0.5).trial!.energy);
+
+  it("reaches the capstones through every combination of the six permanent choices", () => {
+    for (const program of ["runner", "projectile", "wheels"] as Program[]) {
+      const union = new Set<string>();
+      for (let mask = 0; mask < 64; mask++) {
+        const s = completePath(program, mask);
+        expect(s.researched).toHaveLength(66);
+        expect(s.researched.filter(id => NODE_MAP.get(id)?.tier === 11)).toHaveLength(6);
+        const ranks = s.researched.reduce((sum, id) => sum + NODE_MAP.get(id)!.maxRank, 0);
+        expect(ranks).toBeGreaterThanOrEqual(600);
+        expect(ranks).toBeLessThanOrEqual(800);
+        for (const id of s.researched) union.add(id);
+      }
+      expect(union.size).toBe(72);
+    }
   });
-  it("triggers second wind once per run and preserves its used state on reload", () => {
-    let s = start({ ...fresh(), researched: ["runner-0-3"] });
-    s.trial!.energy = 20;
-    s = step(s, 0.5);
-    expect(s.trial!.usedSecondWind).toBe(true);
-    expect(s.trial!.energy).toBeGreaterThan(20);
-    for (let i = 0; i < 30; i++) s = step(s, 0.5);
-    expect(s.trial!.secondWind).toBe(0);
-    s.trial!.energy = 10;
-    s = step(restore(JSON.stringify(s)), 0.5);
-    expect(s.trial!.secondWind).toBe(0);
-    expect(s.trial!.usedSecondWind).toBe(true);
+
+  it("keeps at least 600 possible ranks before the metric chapter for every runner build", () => {
+    for (let mask = 0; mask < 64; mask++) {
+      const s = completePath("runner", mask, 5);
+      expect(s.researched.filter(id => NODE_MAP.get(id)?.tier === 11)).toHaveLength(0);
+      expect(s.researched.reduce((sum, id) => sum + NODE_MAP.get(id)!.maxRank, 0)).toBeGreaterThanOrEqual(600);
+    }
   });
-  it("keeps program-specific abilities and effects in their program", () => {
-    const s = {
-      ...fresh(),
-      program: "projectile" as const,
-      unlocked: ["runner", "projectile"] as const,
-      researched: ["runner-1-3"],
-    };
-    expect(
-      hasAbility({ ...s, unlocked: [...s.unlocked] }, "rolling-start"),
-    ).toBe(false);
-    expect(stats({ ...s, unlocked: [...s.unlocked] }).acceleration).toBe(1);
+
+  it("makes the final physiology talent a new mechanism rather than another capacity upgrade", () => {
+    const first = NODE_MAP.get("runner-0-0")!, last = NODE_MAP.get("runner-0-11")!;
+    expect(first.effects).toEqual({ stamina: .15 });
+    expect(last.effects).toEqual({ oxygen: 2, cooling: 2 });
+    expect(last.multipliers).toEqual({ stamina: 10, economy: 4 });
+    expect(last.maxRank).toBe(1);
+    expect(last.era).toBe(6);
   });
-  it("gates later programs by experience, distance, discoveries and currency", () => {
-    const s = fresh();
-    s.science = 1e5;
-    expect(programDiscovered(s, "projectile")).toBe(false);
-    s.progress.runner.trials = 3;
-    s.progress.runner.bestDistance = 1000;
-    s.progress.runner.distance = 1499;
-    s.researched = ["runner-0-0", "runner-0-1", "runner-0-2", "runner-2-0"];
-    expect(programDiscovered(s, "projectile")).toBe(false);
-    s.progress.runner.distance = 1500;
-    expect(programDiscovered(s, "projectile")).toBe(true);
-    expect(selectProgram({ ...s, science: 219 }, "projectile").program).toBe(
-      "runner",
-    );
-    const next = selectProgram(s, "projectile");
-    expect(next.program).toBe("projectile");
-    expect(next.science).toBe(s.science - 220);
-    expect(programDiscovered(next, "wheels")).toBe(false);
-    next.progress.runner.distance = 6000;
-    next.progress.runner.trials = 6;
-    expect(programDiscovered(next, "wheels")).toBe(true);
+
+  it("makes bionics and the final movement technologies change the speed scale by orders of magnitude", () => {
+    const s = completePath("runner", 63);
+    for (const id of s.researched) s.talentRanks[id] = NODE_MAP.get(id)!.maxRank;
+    expect(stats(s).speed * 1.8).toBeGreaterThan(1000);
+    expect(stats(s).speed).toBeGreaterThan(stats(fresh()).speed * 1000);
+    expect(NODE_MAP.get("runner-4-6")!.multipliers?.speed).toBeCloseTo(Math.pow(1.16, .3));
+    expect(NODE_MAP.get("runner-4-11")!.multipliers?.speed).toBeCloseTo(Math.pow(15, .35));
+  });
+
+  it("leaves headroom for gear and distinct Push output in a fully evolved metric build", () => {
+    const s = evolvedBuild("runner"), steady = measuredRun(s, "steady"), push = measuredRun(s, "push");
+    expect(steady.speed).toBeGreaterThan(1000000);
+    expect(steady.speed).toBeLessThan(30000000);
+    expect(push.speed).toBeLessThan(70000000);
+    expect(push.speed).toBeGreaterThan(steady.speed * 1.3);
+    expect(Number.isFinite(steady.science)).toBe(true);
+    expect(Number.isFinite(push.science)).toBe(true);
+    expect(stats(s).speed).toBeLessThan(1e12);
+  });
+
+  it("keeps a fully evolved rocket vehicle below the ceiling with distinct Push output", () => {
+    // Audit every lawful specialization combination, then simulate the build
+    // with the strongest speed/Push potential rather than an arbitrary path.
+    let s = evolvedBuild("wheels", 0), best = 0;
+    for (let mask = 0; mask < 64; mask++) {
+      const candidate = evolvedBuild("wheels", mask), st = stats(candidate);
+      const potential = st.speed * Math.pow(st.overdrive, .35);
+      if (potential > best) { best = potential; s = candidate; }
+    }
+    const steady = measuredRun(s, "steady"), push = measuredRun(s, "push");
+    expect(steady.speed).toBeGreaterThan(1000000);
+    expect(steady.speed).toBeLessThan(30000000);
+    expect(push.speed).toBeLessThan(70000000);
+    expect(push.speed).toBeGreaterThan(steady.speed * 1.5);
+    expect(steady.duration).toBe(300);
+    expect(push.duration).toBe(300);
+    expect(Number.isFinite(push.science)).toBe(true);
+  });
+
+  it("keeps late projectile talents below the safety ceiling so their final ranks still increase launch velocity", () => {
+    let s = evolvedBuild("projectile", 0), final = projectilePhysics(s);
+    for (let mask = 0; mask < 64; mask++) {
+      const candidate = evolvedBuild("projectile", mask), config = projectilePhysics(candidate);
+      expect(config.speed).toBeLessThan(1e7 / 1.18);
+      if (config.speed > final.speed) { s = candidate; final = config; }
+    }
+    expect(final.speed).toBeGreaterThan(100000);
+    expect(final.speed).toBeLessThan(1e7 / 1.18);
+    const less = structuredClone(s);
+    less.talentRanks["projectile-2-10"]--;
+    const previous = projectilePhysics(less);
+    expect(final.speed).toBeGreaterThan(previous.speed * 1.01);
+    const withoutBreakthrough = structuredClone(s);
+    withoutBreakthrough.researched = withoutBreakthrough.researched.filter(id => id !== "projectile-2-11");
+    delete withoutBreakthrough.talentRanks["projectile-2-11"];
+    expect(final.speed).toBeGreaterThan(projectilePhysics(withoutBreakthrough).speed * 1.2);
+    const active = advanceFlight(launchFlight(initialBallistic(), final), 1, final);
+    expect(active.phase).toBe("flight");
+    expect([active.x, active.y, active.vx, active.vy].every(Number.isFinite)).toBe(true);
+  });
+
+  it("preserves all launcher and vehicle unlock identifiers while projectile talents avoid runner energy stats", () => {
+    for (const variants of Object.values(VARIANTS)) for (const variant of variants) if (variant.node) expect(NODE_MAP.has(variant.node)).toBe(true);
+    for (const n of NODES.filter(n => n.program === "projectile"))
+      expect([...Object.keys(n.effects), ...Object.keys(n.multipliers ?? {})].some(stat => ["stamina", "economy", "recovery", "resilience", "speed"].includes(stat))).toBe(false);
+    expect(NODES.filter(n => n.ability).every(n => n.maxRank === 1)).toBe(true);
   });
 });
-describe("continuous biomes and readable research map", () => {
-  it("blends continuously across every boundary, with a midpoint rather than an abrupt switch", () => {
+
+describe("continuous biome transition", () => {
+  it("blends every boundary continuously rather than swapping the world abruptly", () => {
     for (let i = 1; i < BIOMES.length; i++) {
       const d = BIOMES[i].start;
-      expect(biomeBlend(d)).toEqual({ from: i - 1, to: i, mix: 0.5 });
-      expect(
-        Math.abs(biomeBlend(d - 0.01).mix - biomeBlend(d + 0.01).mix),
-      ).toBeLessThan(0.001);
+      expect(biomeBlend(d)).toEqual({ from: i - 1, to: i, mix: .5 });
+      expect(Math.abs(biomeBlend(d - .01).mix - biomeBlend(d + .01).mix)).toBeLessThan(.001);
     }
-    expect(biomeBlend(0)).toEqual({ from: 0, to: 0, mix: 0 });
-    expect(biomeBlend(500)).toEqual({ from: 1, to: 1, mix: 0 });
-  });
-  it("keeps every node circle separated with room for labels", () => {
-    for (const program of ["runner", "projectile", "wheels", "global"]) {
-      const nodes = NODES.filter((n) => n.program === program);
-      for (let i = 0; i < nodes.length; i++)
-        for (let j = i + 1; j < nodes.length; j++) {
-          const a = nodePosition(nodes[i]),
-            b = nodePosition(nodes[j]);
-          expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThan(100);
-        }
-    }
-  });
-  it("offers separate running and ballistic stats with individually named discoveries", () => {
-    expect(Object.keys(STAT_LABELS)).toHaveLength(16);
-    expect(new Set(NODES.map((n) => n.name)).size).toBe(NODES.length);
-    const used = new Set(NODES.flatMap((n) => Object.keys(n.effects)));
-    expect(used.size).toBe(16);
-    expect(
-      NODES.filter((n) => Object.keys(n.effects).length > 1).length,
-    ).toBeGreaterThan(65);
-    const projectile = NODES.filter((n) => n.program === "projectile");
-    for (const n of projectile)
-      expect(
-        Object.keys(n.effects).every((stat) =>
-          [
-            "launchSpeed",
-            "drag",
-            "lift",
-            "stability",
-            "reload",
-            "payload",
-            "yield",
-            "xp",
-            "luck",
-          ].includes(stat),
-        ),
-      ).toBe(true);
-    const pairs = NODES.filter((n) => n.choiceGroup);
-    expect(
-      pairs.every((n) => Object.values(n.effects).some((value) => value! < 0)),
-    ).toBe(true);
-  });
-});
-describe("progressive story", () => {
-  it("introduces the premise first and waits for features to be encountered", () => {
-    const s = fresh();
-    expect(nextStory(s, "field")).toBe("intro");
-    s.storySeen = ["intro"];
-    expect(nextStory(s, "field")).toBeNull();
-    s.progress.runner.trials = 1;
-    expect(nextStory(s, "research")).toBe("research");
-    s.storySeen.push("research");
-    s.progress.runner.bestDistance = 100;
-    expect(nextStory(s, "field")).toBe("forest");
-  });
-  it("remembers seen tips and allows players to skip all of them", () => {
-    const s = fresh();
-    s.storySeen = ["intro", "research", "forest"];
-    s.progress.runner.trials = 1;
-    s.progress.runner.bestDistance = 100;
-    expect(nextStory(restore(JSON.stringify(s)), "research")).toBeNull();
-    expect(
-      nextStory({ ...s, storySeen: [], tipsEnabled: false }, "field"),
-    ).toBeNull();
   });
 });

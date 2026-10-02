@@ -16,7 +16,13 @@ export type Stat =
   | "lift"
   | "stability"
   | "reload"
-  | "payload";
+  | "payload"
+  | "traction"
+  | "cooling"
+  | "oxygen"
+  | "automation"
+  | "overdrive"
+  | "aerodynamics";
 export const STAT_LABELS: Record<Stat, string> = {
   speed: "Cruising speed",
   stamina: "Stamina capacity",
@@ -33,15 +39,21 @@ export const STAT_LABELS: Record<Stat, string> = {
   lift: "Wing lift",
   stability: "Launch consistency",
   reload: "Preparation rate",
-  payload: "Impulse yield",
+  payload: "Impact data yield",
+  traction: "Surface grip",
+  cooling: "Heat control",
+  oxygen: "Oxygen delivery",
+  automation: "Automation",
+  overdrive: "Push output",
+  aerodynamics: "Airflow efficiency",
 };
 export const effectLabel = (stat: Stat, value: number) =>
   stat === "wind"
     ? (value >= 0 ? "+" : "−") +
-      Math.abs(value * 2).toFixed(1) +
+      Math.abs(value * 2).toLocaleString("en", { maximumFractionDigits: 2 }) +
       " m/s tailwind"
     : (value >= 0 ? "+" : "−") +
-      Math.round(Math.abs(value * 100)) +
+      Math.abs(value * 100).toLocaleString("en", { maximumFractionDigits: 1 }) +
       "% " +
       STAT_LABELS[stat].toLowerCase();
 export const STAT_PURPOSE: Record<Stat, string> = {
@@ -63,8 +75,13 @@ export const STAT_PURPOSE: Record<Stat, string> = {
   stability: "Keep the actual release angle closer to the chosen angle.",
   reload:
     "Prepare the next projectile sooner. A lower rate means a longer wait.",
-  payload:
-    "Earn more Impulse from each completed shot. Impulse buys projectile research.",
+  payload: "Earn more RP from each completed landing measurement.",
+  traction: "Retain more speed when the surface becomes rough.",
+  cooling: "Reduce the extra heat cost of Push pace above 30 m/s.",
+  oxygen: "Reduce frontier resistance and the rate at which fatigue builds.",
+  automation: "Shorten the rest between repeated experiments and improve offline laboratory income.",
+  overdrive: "Increase the extra speed available at Push pace.",
+  aerodynamics: "Reduce the extra energy lost to air resistance above 30 m/s.",
 };
 export interface ResearchNode {
   id: string;
@@ -75,6 +92,9 @@ export interface ResearchNode {
   tier: number;
   cost: number;
   localCost: number;
+  maxRank: number;
+  era: number;
+  multipliers?: Partial<Record<Stat, number>>;
   requires: string[];
   anyOf?: string[];
   /** Only one specialization in this group may be purchased. */
@@ -132,14 +152,16 @@ export const PROGRAMS = {
 };
 
 export const LANES: Record<Program | "global", string[]> = {
-  runner: ["Endurance", "Running technique", "Footwear & kit", "Atmospherics"],
+  runner: ["Physiology", "Technique", "Footwear", "Atmospherics", "Augmentation", "Field science"],
   projectile: [
     "Launch mechanics",
     "Flight",
     "Heavy launchers",
     "Measurement & particles",
+    "Materials",
+    "Control systems",
   ],
-  wheels: ["Transmission", "Chassis", "Power", "Road science"],
+  wheels: ["Transmission", "Chassis", "Power", "Road science", "Propulsion", "Vehicle control"],
   global: ["Knowledge", "Support", "Training", "Engineering"],
 };
 const catalog = {
@@ -151,31 +173,36 @@ const catalog = {
 export const NODES: ResearchNode[] = Object.entries(catalog).flatMap(
   ([program, lanes]) =>
     lanes.flatMap((lane, l) =>
-      lane.map(([name, description, effects, icon, ability], tier) => {
+      lane.map(([name, description, effects, icon, ability, ranks, multipliers], tier) => {
         const p = program as Program | "global",
           id = (lane: number, t: number) => p + "-" + lane + "-" + t;
         let requires: string[] = [],
           anyOf: string[] | undefined;
+        // Six independent paths. A single, clearly labelled fork joins again
+        // inside its own discipline; no other column is ever a prerequisite.
         if (p === "global") {
           if (tier) requires = [id(l, tier - 1)];
-          if (tier === 2)
-            anyOf = ["runner-2-3", "projectile-2-3", "wheels-2-3"];
-        } else if (tier === 0) {
-          requires = l === 1 ? [id(0, 0)] : l === 3 ? [id(2, 0)] : [];
-        } else if (tier === 1 || tier === 2) requires = [id(l, 0)];
-        else if (tier === 3) anyOf = [id(l, 1), id(l, 2)];
-        else if (tier === 4) requires = [id(l, 1)];
-        else if (tier === 5) requires = [id(l, 2)];
-        else if (tier === 6) anyOf = [id(l, 3), id(l, 4), id(l, 5)];
-        else {
-          requires = [id(l, 6)];
-          anyOf = [id(l, 4), id(l, 5)];
+        } else if (tier === 4 || tier === 5) requires = [id(l, 3)];
+        else if (tier === 6) anyOf = [id(l, 4), id(l, 5)];
+        else if (tier) requires = [id(l, tier - 1)];
+        const stat = (Object.keys(effects)[0] ?? Object.keys(multipliers ?? {})[0] ?? "yield") as Stat;
+        const laneEra = p === "runner" ? [0, 0, 0, 1, 2, 1][l]
+          : p === "global" ? 2 : l >= 4 ? 1 : 0;
+        const maxRank = ability ? 1 : (ranks ?? (tier === 11 ? 1 : 12));
+        const rankMultipliers = { ...multipliers };
+        if ((p === "runner" || p === "wheels") && maxRank > 1) {
+          if (rankMultipliers.speed) rankMultipliers.speed = Math.pow(rankMultipliers.speed, .3);
+          // Twelve ranks per technology should leave space for gear evolution
+          // and the next chapter, rather than reaching the simulation ceiling.
+          for (const stat of ["stamina", "economy"] as const)
+            if (rankMultipliers[stat]) rankMultipliers[stat] = Math.pow(rankMultipliers[stat]!, .65);
         }
-        if (p === "runner" && tier === 0) {
-          if (l === 1) requires = [id(0, 0), id(2, 0)];
-          if (l === 3) requires = [id(2, 3)];
-        }
-        const stat = Object.keys(effects)[0] as Stat;
+        if (p === "runner" && maxRank === 1 && rankMultipliers.speed)
+          rankMultipliers.speed = Math.pow(rankMultipliers.speed, .35);
+        if (p === "wheels" && maxRank === 1 && rankMultipliers.speed)
+          rankMultipliers.speed = Math.pow(rankMultipliers.speed, .12);
+        if (p === "projectile" && rankMultipliers.launchSpeed)
+          rankMultipliers.launchSpeed = Math.pow(rankMultipliers.launchSpeed, .15);
         return {
           id: id(l, tier),
           name,
@@ -183,24 +210,21 @@ export const NODES: ResearchNode[] = Object.entries(catalog).flatMap(
           program: p,
           lane: l,
           tier,
-          cost:
-            p === "global"
-              ? 180 * Math.pow(4, tier)
-              : Math.round(
-                  [15, 24, 28, 70, 120, 165, 380, 950][tier] *
-                    (p === "runner" && l === 1 && tier === 0 ? 1.6 : 1) *
-                    (l === 3 ? 1.15 : 1),
-                ),
-          localCost: p === "global" ? 0 : [0, 4, 6, 18, 30, 45, 90, 220][tier],
+          cost: p === "global" ? [3, 4, 6, 8, 12, 25][tier] : [1, 1, 2, 2, 3, 4, 5, 6, 8, 10, 15, 25][tier],
+          localCost: 0,
+          maxRank,
+          era: p === "global" ? [2, 2, 3, 4, 5, 6][tier]
+            : Math.max(laneEra, [0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 6][tier]),
+          multipliers: Object.keys(rankMultipliers).length ? rankMultipliers : undefined,
           requires,
           anyOf,
           choiceGroup:
-            p !== "global" && l < 3 && (tier === 1 || tier === 2)
+            p !== "global" && (tier === 4 || tier === 5)
               ? p + "-specialization-" + l
               : undefined,
           kind: "permanent" as const,
           stat,
-          power: effects[stat]!,
+          power: effects[stat] ?? 0,
           effects,
           icon,
           ability,
@@ -217,33 +241,6 @@ export const choiceAlternatives = (n: ResearchNode) =>
     : [];
 export const chosenAlternative = (n: ResearchNode, researched: string[]) =>
   choiceAlternatives(n).find((other) => researched.includes(other.id));
-export const runnerDiscoveryCount = (researched: string[]) =>
-  researched.filter((id) => NODE_MAP.get(id)?.program === "runner").length;
-export const beginnerResearch = (program: Program, researched: string[]) =>
-  program === "runner" && runnerDiscoveryCount(researched) < 4;
-/** Never offer a permanent specialization without showing its alternative. */
-export const firstDiscoveries = (researched: string[]) => {
-  const candidates = NODES.filter(
-    (n) =>
-      n.program === "runner" &&
-      !researched.includes(n.id) &&
-      !chosenAlternative(n, researched) &&
-      n.requires.every((id) => researched.includes(id)) &&
-      (!n.anyOf?.length || n.anyOf.some((id) => researched.includes(id))),
-  ).sort((a, b) => a.cost - b.cost || a.lane - b.lane);
-  const choices: ResearchNode[] = [];
-  for (const n of candidates) {
-    if (choices.includes(n)) continue;
-    const group = [
-      n,
-      ...choiceAlternatives(n).filter((other) => candidates.includes(other)),
-    ];
-    if (choices.length + group.length > 3) continue;
-    choices.push(...group);
-    if (choices.length === 3) break;
-  }
-  return choices;
-};
 export const VARIANTS: Record<
   Program,
   {

@@ -1,170 +1,84 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import {
-  fresh,
-  research,
-  stats,
-  start,
-  step,
-  available,
-  sharedUnlocked,
-} from "./game";
-import {
-  NODES,
-  NODE_MAP,
-  beginnerResearch,
-  firstDiscoveries,
-} from "./research";
-import { FirstExperiments } from "./ResearchPanel";
+import Research, { talentGate } from "./ResearchPanel";
+import { fresh, available, afford, research, stats, talentRank, talentCost, sharedUnlocked, restore } from "./game";
+import { NODE_MAP } from "./research";
 
-describe("first research decisions", () => {
-  it("starts with exactly two understandable, single-effect choices and no lab budget", () => {
-    const s = fresh(),
-      choices = firstDiscoveries(s.researched);
-    expect(s.science).toBe(0);
-    expect(choices.map((n) => n.id)).toEqual(["runner-0-0", "runner-2-0"]);
-    expect(choices.map((n) => n.effects)).toEqual([
-      { stamina: 0.25 },
-      { speed: 0.15 },
-    ]);
-    expect(choices.every((n) => n.cost === 15 && n.localCost === 0)).toBe(true);
-    expect(available(s, "runner-1-0")).toBe(false);
+const render = (game = fresh()) => renderToStaticMarkup(createElement(Research, { game, setGame: () => {}, onRun: () => {}, onFunding: () => {} }));
+
+describe("talent points and early paths", () => {
+  it("spends talent points instead of RP and lets independent starting paths stay available", () => {
+    const s = fresh();
+    s.science = 1e7;
+    expect(afford(s, "runner-0-0")).toBe(false);
+    expect(research(s, "runner-0-0")).toBe(s);
+    s.talentPoints = 3;
+    for (const id of ["runner-0-0", "runner-1-0", "runner-2-0"]) expect(available(s, id)).toBe(true);
+    const result = research(s, "runner-2-0");
+    expect(result.talentPoints).toBe(2);
+    expect(result.science).toBe(s.science);
+    expect(stats(result).speed).toBeCloseTo(1.08);
+    expect(stats(result).economy).toBe(1);
+    expect(available(result, "runner-0-0")).toBe(true);
+    expect(available(result, "runner-2-1")).toBe(true);
+  });
+
+  it("offers twelve meaningful ranks with a fixed TP price and a hard maximum", () => {
+    let s = fresh();
+    s.talentPoints = 12;
+    for (let rank = 1; rank <= 12; rank++) {
+      expect(talentCost(s, "runner-0-0")).toBe(1);
+      s = research(s, "runner-0-0");
+      expect(talentRank(s, "runner-0-0")).toBe(rank);
+      expect(stats(s).stamina).toBeCloseTo(1 + rank * .15);
+    }
+    expect(s.talentPoints).toBe(0);
+    expect(s.researched).toEqual(["runner-0-0"]);
+    expect(available(s, "runner-0-0")).toBe(false);
+    expect(research(s, "runner-0-0")).toBe(s);
+    expect(talentRank(restore(JSON.stringify(s)), "runner-0-0")).toBe(12);
+  });
+
+  it("keeps late disciplines and laboratory systems gated even with cheat money", () => {
+    const s = fresh();
+    s.science = 1e7;
+    s.talentPoints = 1e5;
     expect(available(s, "runner-3-0")).toBe(false);
-  });
-
-  it("lets the first completed run buy one improvement, with a noticeable permanent result", () => {
-    let s = start(fresh());
-    for (let i = 0; s.trial && i < 3000; i++) s = step(s, 0.5);
-    expect(s.trial).toBeNull();
-    expect(s.history[0].duration).toBeGreaterThanOrEqual(45);
-    expect(s.history[0].duration).toBeLessThanOrEqual(85);
-    expect(s.science).toBeGreaterThanOrEqual(15);
-    expect(s.science).toBeLessThan(30);
-    const warmedUp = research(s, "runner-0-0"),
-      shod = research(s, "runner-2-0");
-    expect(stats(warmedUp).stamina - stats(s).stamina).toBeCloseTo(0.25);
-    expect(stats(shod).speed - stats(s).speed).toBeCloseTo(0.15);
-    expect(research(warmedUp, "runner-2-0")).toBe(warmedUp);
-    expect(research(shod, "runner-0-0")).toBe(shod);
-  });
-
-  it("opens a small frontier with genuine alternative branches before showing the full atlas", () => {
-    const owned = ["runner-0-0"];
-    expect(firstDiscoveries(owned).map((n) => n.id)).toEqual([
-      "runner-2-0",
-      "runner-0-1",
-      "runner-0-2",
-    ]);
-    expect(beginnerResearch("runner", owned)).toBe(true);
-    const both = [...owned, "runner-2-0"];
-    expect(firstDiscoveries(both).map((n) => n.id)).toEqual([
-      "runner-0-1",
-      "runner-0-2",
-      "runner-1-0",
-    ]);
-    expect(
-      beginnerResearch("runner", [...both, "runner-0-1", "runner-1-0"]),
-    ).toBe(false);
-    expect(beginnerResearch("projectile", [])).toBe(false);
-    const s = { ...fresh(), researched: owned };
-    expect(available(s, "runner-0-1")).toBe(true);
-    expect(available(s, "runner-0-2")).toBe(true);
-    expect(available(s, "runner-0-3")).toBe(false);
-  });
-
-  it("shows the complete specialization pair and names the permanent exclusion", () => {
-    const s = fresh();
-    s.progress.runner.trials = 2;
-    s.researched = ["runner-0-0"];
-    s.science = 100;
-    s.progress.runner.funds = 100;
-    const markup = renderToStaticMarkup(
-      createElement(FirstExperiments, {
-        game: s,
-        setGame: () => {},
-        onRun: () => {},
-      }),
-    );
-    expect(markup).toContain("Long, slow training");
-    expect(markup).toContain("Interval training");
-    expect(markup).toContain("Choosing this closes");
-    expect(markup).toContain("Choose one · permanent");
-    expect(markup).toContain("−5% cruising speed");
-    const choices = firstDiscoveries(["runner-0-0", "runner-0-1"]);
-    expect(choices.some((n) => n.id === "runner-0-2")).toBe(false);
-  });
-
-  it("keeps shared research gated even if a new player has enough money", () => {
-    const s = fresh();
-    s.science = 10000;
+    expect(available(s, "runner-4-0")).toBe(false);
+    expect(available(s, "runner-0-2")).toBe(false);
     expect(sharedUnlocked(s)).toBe(false);
-    expect(available(s, "global-3-0")).toBe(false);
-    expect(research(s, "global-3-0")).toBe(s);
-    s.progress.runner.trials = 10;
-    s.progress.runner.bestDistance = 1000;
-    s.researched = NODES.filter((n) => n.program === "runner")
-      .slice(0, 8)
-      .map((n) => n.id);
-    expect(sharedUnlocked(s)).toBe(true);
-    expect(available(s, "global-3-0")).toBe(true);
-    expect(NODE_MAP.get("global-3-0")!.effects).toEqual({ yield: 0.15 });
+    expect(available(s, "global-0-0")).toBe(false);
+    expect(talentGate(s, NODE_MAP.get("runner-4-0")!)).toBe("Develop Biomechanics");
   });
 
-  it("explains price, permanence, and the choice without showing late systems", () => {
-    const s = fresh();
-    s.science = 19;
-    const markup = renderToStaticMarkup(
-      createElement(FirstExperiments, {
-        game: s,
-        setGame: () => {},
-        onRun: () => {},
-      }),
-    );
-    expect(markup).toContain("Warm-up ritual");
-    expect(markup).toContain("Proper running shoes");
-    expect(markup).toContain("Neither choice closes the other path.");
-    expect(markup).toContain("One purchase · permanent");
-    expect(markup).toContain("19 research points available");
-    expect(markup).not.toContain("Shared laboratory");
-    expect(markup).not.toContain("Endurance is training data");
-    expect(markup).not.toContain("Pocket tailwind");
+  it("names the exact next requirement, cost shortfall and closed specialization", () => {
+    let s = fresh();
+    expect(talentGate(s, NODE_MAP.get("runner-0-1")!)).toContain("Learn Warm-up ritual first");
+    expect(talentGate(s, NODE_MAP.get("runner-0-0")!)).toBe("Need 1 more TP");
+    s.development = { athletics: 1, biomechanics: 1 };
+    s.researched = ["runner-0-0", "runner-0-1", "runner-0-2", "runner-0-3"];
+    s.talentPoints = 20;
+    s = research(s, "runner-0-4");
+    expect(available(s, "runner-0-5")).toBe(false);
+    expect(talentGate(s, NODE_MAP.get("runner-0-5")!)).toBe("Closed by Marathon conditioning");
   });
 
-  it("tells a first-time researcher to test the first finding on another run", () => {
-    const s = fresh();
-    s.progress.runner.trials = 1;
-    s.researched = ["runner-0-0"];
-    s.science = 100;
-    const markup = renderToStaticMarkup(
-      createElement(FirstExperiments, {
-        game: s,
-        setGame: () => {},
-        onRun: () => {},
-      }),
-    );
-    expect(markup).toContain("Run again to test this finding.");
-    expect(markup).toContain("Run again to test it");
-    expect(markup).toContain("One discovery at a time.");
-    expect(markup).not.toContain("Shared laboratory");
-  });
-
-  it("explains the shortfall after an early finish instead of promising a purchase", () => {
-    const s = fresh();
-    s.progress.runner.trials = 1;
-    s.science = 13;
-    const markup = renderToStaticMarkup(
-      createElement(FirstExperiments, {
-        game: s,
-        setGame: () => {},
-        onRun: () => {},
-      }),
-    );
-    expect(markup).toContain("Run again to collect enough research.");
-    expect(markup).toContain("You need 2 more; your research carries over.");
-    expect(markup).toContain("Run for more data");
-    expect(markup).not.toContain(
-      "Choose one improvement. Run again and feel the difference.",
-    );
+  it("shows a clear TP budget and the three first paths without exposing concrete late technologies", () => {
+    const s = fresh(); s.talentPoints = 4;
+    const html = render(s);
+    expect(html).toContain('aria-label="Talent tree"');
+    expect(html).toContain("Talents");
+    expect(html).toContain("Warm-up ritual");
+    expect(html).toContain("Cadence metronome");
+    expect(html).toContain("Proper running shoes");
+    expect(html).toContain("3 talents available");
+    expect(html).toContain("Learn · 1 TP");
+    expect(html).toContain("Each rank adds");
+    expect(html).toContain("Buy talent points");
+    expect(html).not.toContain("Bionic legs");
+    expect(html).not.toContain("Particle accelerator");
+    expect(html).not.toContain("Shared laboratory");
+    expect(html).not.toContain("atlas-canvas");
   });
 });

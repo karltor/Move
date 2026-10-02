@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { PROGRAMS, VARIANTS, STAT_LABELS, type Stat } from "./research";
-import { SLOTS, slotName } from "./equipment";
+import { SLOTS, slotName, gearName } from "./equipment";
 import {
   biomeAt,
   BIOMES,
@@ -17,10 +17,12 @@ import {
   pendingRewards,
   equipmentUnlocked,
   trainingProgress,
+  levelStart,
   routeChallenge,
   selectProgram,
   equipGear,
   hasAbility,
+  era,
   projectileFlight,
   type Save,
 } from "./game";
@@ -42,6 +44,7 @@ export function telemetryStats(game: Save): Stat[] {
           "yield",
           "xp",
           "luck",
+          "automation",
         ]
       : [
           "speed",
@@ -54,6 +57,7 @@ export function telemetryStats(game: Save): Stat[] {
           "yield",
           "xp",
           "luck",
+          "traction", "cooling", "oxygen", "automation", "overdrive", "aerodynamics",
         ];
   return keys.filter((key) => Math.abs(values[key] - 1) > 0.0001);
 }
@@ -70,12 +74,14 @@ export default function Expedition({
   onResearch,
   onEquipment,
   stagingReady = true,
+  timeScale = 1,
 }: {
   game: Save;
   setGame: React.Dispatch<React.SetStateAction<Save>>;
   onResearch: () => void;
   onEquipment: () => void;
   stagingReady?: boolean;
+  timeScale?: number;
 }) {
   const [closeup, setCloseup] = useState(false);
   const telemetry = useRef<HTMLDialogElement>(null),
@@ -90,6 +96,7 @@ export default function Expedition({
     training = trainingProgress(game),
     challenge = routeChallenge(game);
   const flight = projectile ? projectileFlight(game) : null;
+  const nextTraining = stats({...game, progress: {...game.progress, [p]: {...progress, xp: levelStart(training.level + 1)}}});
   const previousLevel = useRef(training.level);
   const [levelUp, setLevelUp] = useState(false);
   useEffect(() => {
@@ -134,7 +141,7 @@ export default function Expedition({
           onClick={() => setGame((s) => ({ ...s, pace: id }))}
         >
           <b>{label}</b>
-          <small>{desc}</small>
+          <small>{id==='push' ? `+${Math.round((1.3*Math.pow(st.overdrive,.35)-1)*100)}% speed · higher energy use` : desc}</small>
         </button>
       ))}
     </div>
@@ -193,6 +200,7 @@ export default function Expedition({
             }
           >
             <World
+              timeScale={timeScale}
               game={game}
               closeup={closeup}
               onView={() => setCloseup((v) => !v)}
@@ -212,6 +220,7 @@ export default function Expedition({
                     : "Preparing launch"
                 : (t?.speed ?? 0).toFixed(1) + " m/s"}{" "}
               <i>·</i> {clock(t?.time ?? 0)}
+              {!!t?.maxTime && <span> / {clock(t.maxTime)}</span>}
             </small>
           </div>
           {!projectile && next && (
@@ -307,8 +316,8 @@ export default function Expedition({
               </div>
               <small>
                 {projectile
-                  ? "Next level: +2.5% launch speed"
-                  : "Next level: +8 " + def.unit + " · +3% top speed"}
+                  ? "Next level: +" + (100 * (nextTraining.launchSpeed / st.launchSpeed - 1)).toFixed(1) + "% launch speed"
+                  : "Next level: +" + Math.round(100 * (nextTraining.stamina - st.stamina)).toLocaleString() + " " + def.unit + " · +" + (100 * (nextTraining.speed / st.speed - 1)).toFixed(1) + "% speed"}
               </small>
             </div>
           </div>
@@ -335,7 +344,7 @@ export default function Expedition({
                   <small>
                     {(c === "a" ? event.ad : event.bd).replace(
                       /program currency/g,
-                      def.currency,
+                      "RP",
                     )}
                   </small>
                 </button>
@@ -347,14 +356,10 @@ export default function Expedition({
           <div className="finish-console">
             <span className="eyebrow">BANK IF YOU FINISH NOW</span>
             <div className="pending-rp">
-              <strong>+{reward.science}</strong>
+              <strong>+{reward.science.toLocaleString()}</strong>
               <span>RP</span>
             </div>
-            {experienced && (
-              <div className="bank-local">
-                +{reward.funds} {def.currency}
-              </div>
-            )}
+            <div className="bank-local">Spend RP on talents, equipment or projects.</div>
             <button
               className="primary"
               disabled={!t}
@@ -363,7 +368,7 @@ export default function Expedition({
                 onResearch();
               }}
             >
-              Finish experiment · +{reward.science} RP →
+              Finish experiment · +{reward.science.toLocaleString()} RP →
             </button>
           </div>
           {projectile ? (
@@ -372,6 +377,7 @@ export default function Expedition({
                 {flight?.phase === "flight" ? "FLIGHT" : "LAUNCHER"}
               </span>
               <dl>
+                {(flight?.clockRate ?? 1)>1 && <div><dt>Flight clock</dt><dd>×{flight!.clockRate.toFixed(1)}</dd></div>}
                 <div>
                   <dt>Height</dt>
                   <dd>{(flight?.y ?? 0).toFixed(1)} m</dd>
@@ -431,7 +437,7 @@ export default function Expedition({
           )}
           {!projectile && t && (
             <div className={"effort-readout " + challenge.difficulty}>
-              <span>{p === "runner" ? "Stamina" : "Battery"} use</span>
+              <span>Terrain resistance</span>
               <b>{challenge.drainMultiplier.toFixed(1)}×</b>
             </div>
           )}
@@ -465,11 +471,7 @@ export default function Expedition({
             )}
           </div>
           <div className="console-bottom">
-            {experienced && (
-              <span>
-                {Math.floor(progress.funds)} <b>{def.currency}</b>
-              </span>
-            )}
+            {experienced && <span>{game.talentPoints} TP · {game.vouchers} vouchers</span>}
             <button
               className="text-button"
               onClick={() => telemetry.current?.showModal()}
@@ -519,7 +521,7 @@ export default function Expedition({
                     }
                   />
                   <b>{PROGRAMS[mode].short}</b>
-                  <small>{PROGRAMS[mode].currency}</small>
+                  <small>{mode === "projectile" ? "Six-shot test" : "Distance trial"}</small>
                 </button>
               ))}
             </div>
@@ -565,6 +567,17 @@ export default function Expedition({
             </>
           )}
         </section>
+        {!projectile && era(game) >= 1 && (
+          <section className="staging-section">
+            <h2>Run length</h2>
+            <div className="staging-variants" aria-label="Run length">
+              {[[0, "Until exhausted"], [120, "2 minutes"], [300, "5 minutes"], [900, "15 minutes"]].map(([seconds, label]) => (
+                <button key={seconds} className={game.sampleDuration === seconds ? "selected" : ""} aria-pressed={game.sampleDuration === seconds} onClick={() => setGame(s => ({...s, sampleDuration: Number(seconds)}))}>{label}</button>
+              ))}
+            </div>
+            <p className="fixed-angle">Timed runs bank RP when the timer ends. Auto-repeat uses the same limit.</p>
+          </section>
+        )}
         {gear.length > 0 && (
           <section className="staging-section">
             <h2>Equipment</h2>
@@ -595,16 +608,7 @@ export default function Expedition({
                           .filter((g) => g.slot === slot)
                           .map((g) => (
                             <option key={g.id} value={g.id}>
-                              {g.name} ·{" "}
-                              {g.affixes
-                                .map(
-                                  (a) =>
-                                    "+" +
-                                    Math.round(a.value * 100) +
-                                    "% " +
-                                    STAT_LABELS[a.stat],
-                                )
-                                .join(", ")}
+                              {gearName(g)} · level {g.upgradeLevel ?? 0}
                             </option>
                           ))}
                       </select>
@@ -624,7 +628,7 @@ export default function Expedition({
                 onResearch();
               }}
             >
-              Back to research
+              Back to funding
             </button>
           )}
           <button
@@ -665,7 +669,7 @@ export default function Expedition({
         </div>
         <p>
           {telemetryStats(game).length
-            ? "Combined bonuses from training, research and equipped items."
+            ? "Combined bonuses from training, talents, laboratory projects and equipped items."
             : "No modifiers yet. Complete a field test to fund your first discovery."}
         </p>
       </dialog>

@@ -24,4 +24,12 @@ describe("equipment shown on the scientist", () => {
     expect(result.visible.GearShoeL).toBe(false);
     expect(result.visible.EverydayShoeL).toBe(true);
   });
+  it('updates the visible equipment when the same item evolves',()=>{
+    const basic=characterEquipment({inventory:[shoes],equipped:[shoes.id],program:'runner'});
+    const upgraded=characterEquipment({inventory:[{...shoes,upgradeLevel:100,upgradePath:'kinetic'}],equipped:[shoes.id],program:'runner'});
+    expect(upgraded.key).not.toBe(basic.key);
+    expect(upgraded.colors.footwear).not.toBe(basic.colors.footwear);
+    expect(upgraded.glow).toBeGreaterThan(0);
+    expect(upgraded.augmentation).toBe(true);
+  });
 });

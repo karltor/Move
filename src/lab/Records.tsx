@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { PROGRAMS } from "./research";
-import { totalTrials, restore, distance, clock, type Save } from "./game";
+import { totalTrials, restore, distance, clock, grantRP, type Save } from "./game";
 export default function Records({
   game,
   setGame,
@@ -15,6 +15,8 @@ export default function Records({
   onReset: () => void;
 }) {
   const [saved, setSaved] = useState(false);
+  const [cheatExponent, setCheatExponent] = useState(3);
+  const cheatAmount = Math.pow(10, cheatExponent);
   const importRef = useRef<HTMLInputElement>(null);
   function exportSave() {
     const blob = new Blob(
@@ -49,7 +51,7 @@ export default function Records({
                 <th>PROGRAM</th>
                 <th>VELOCITY</th>
                 <th>DISTANCE</th>
-                <th>RESEARCH</th>
+                <th>RP EARNED</th>
                 <th>TIME</th>
               </tr>
             </thead>
@@ -95,16 +97,13 @@ export default function Records({
           <br />
           Then question the limit.
         </h2>
-        <p>
-          You lead a small research team with a very large ambition. Pick a
-          program, run experiments and turn the results into discoveries.
-        </p>
+        <p>Run experiments, earn RP and fund the improvements you want to test next.</p>
         <div className="guide-steps">
           {[
             [
               "01",
               "Run the experiment",
-              "Choose your experiment and equipment before starting. Running ends when stamina runs out or you finish. XP grows during the run. The finish button shows the RP you will keep.",
+              "Choose your experiment and equipment before starting. A run ends when stamina runs out, you finish, or a selected timer expires. Athletic science unlocks 2, 5 and 15 minute limits. XP grows during the run; Finish shows the RP you will keep.",
             ],
             [
               "02",
@@ -113,8 +112,8 @@ export default function Records({
             ],
             [
               "03",
-              "Follow your curiosity",
-              "Research Points fund discoveries. Each experiment also earns its own training currency. Discoveries stay active permanently. Some specializations exclude another approach; compare their benefits and drawbacks before buying.",
+              "Fund your improvements",
+              "Use Funding to convert RP into Talent Points or equipment vouchers. Talent Points unlock nodes and buy more ranks in the talent tree. Vouchers fund workshop upgrades. Development projects use RP directly for larger, lasting improvements.",
             ],
             [
               "04",
@@ -122,7 +121,7 @@ export default function Records({
                 ? "Test projectile flight"
                 : "Reach further",
               game.unlocked.includes("projectile")
-                ? "A projectile experiment launches six shots. Choose the angle before starting; only landed shots earn RP and Impulse. Compare range, launch speed and flight behavior when choosing upgrades."
+                ? "A projectile experiment launches six shots. Set an angle when angle control is unlocked. Landed shots earn RP and XP. Compare range, launch speed and flight behavior when choosing talents."
                 : "Build stamina and running technique to pass the forest boundary. Longer runs produce more data. New experiments and equipment appear as you reach their milestones.",
             ],
           ].map(([num, title, desc]) => (
@@ -137,6 +136,13 @@ export default function Records({
         </div>
       </div>
       <aside>
+        <div className="cheat-controls">
+          <h3>Test funding</h3><p>Add RP to explore talents, equipment and development projects.</p>
+          <label htmlFor="cheat-rp">RP to grant <output>{cheatAmount.toLocaleString("en")}</output></label>
+          <input id="cheat-rp" type="range" min="1" max="7" step="1" value={cheatExponent} aria-label="RP cheat amount" aria-valuetext={cheatAmount.toLocaleString("en") + " RP"} onChange={(e) => setCheatExponent(Number(e.target.value))} />
+          <div className="cheat-ticks">{["10", "100", "1k", "10k", "100k", "1m", "10m"].map((label) => <span key={label}>{label}</span>)}</div>
+          <button className="secondary" onClick={() => setGame((s) => grantRP(s, cheatAmount))}>Grant {cheatAmount.toLocaleString("en")} RP</button>
+        </div>
         <h3>Save & backup</h3>
         <p>
           The game saves automatically in this browser. Export a backup to move
@@ -180,14 +186,14 @@ export default function Records({
           }}
         />
         <p className="small-note">
-          The support team earns research offline for up to two hours with
-          auto-repeat enabled. Your current expedition resumes where you left
-          it. No offline distance is invented.
+          With auto-repeat enabled, the support team earns RP offline for up to
+          seven days. Your current experiment resumes where you left it.
+          Offline work does not add distance records or completed experiments.
         </p>
         <hr />
         <h3>Start from scratch.</h3>
         <p>
-          Clear all research, currencies and expedition records in this browser.
+          Clear talents, gear, development projects, currencies and expedition records in this browser.
         </p>
         <button className="danger" onClick={onReset}>
           Reset all progress

@@ -1,4 +1,5 @@
-import { rollGear, random, validateGear, type Gear } from "./equipment";
+import { rollGear, random, validateGear, gearEffects, gearMultipliers, type Gear } from "./equipment";
+import { currentEra, DEVELOPMENT_PROJECTS } from './development';
 import {
   advanceFlight,
   initialBallistic,
@@ -26,6 +27,7 @@ export interface Progress {
   variant: string;
 }
 export interface Trial {
+  maxTime?: number;
   time: number;
   distance: number;
   speed: number;
@@ -63,6 +65,13 @@ export interface Result {
 export interface Save {
   version: 2;
   science: number;
+  talentPoints: number;
+  vouchers: number;
+  currencyBought: { talent: number; voucher: number };
+  talentRanks: Record<string, number>;
+  development: Record<string, number>;
+  debriefPending: boolean;
+  sampleDuration: number;
   program: Program;
   unlocked: Program[];
   progress: Record<Program, Progress>;
@@ -184,6 +193,13 @@ export function fresh(): Save {
     storySeen: [],
     tipsEnabled: true,
     science: 0,
+    talentPoints: 0,
+    vouchers: 0,
+    currencyBought: { talent: 0, voucher: 0 },
+    talentRanks: {},
+    development: {},
+    debriefPending: false,
+    sampleDuration: 0,
     program: "runner",
     unlocked: ["runner"],
     progress: {
@@ -209,9 +225,19 @@ export function fresh(): Save {
       "A long road starts here. Set a sustainable pace and see how far the team can go.",
   };
 }
-export const level = (xp: number) =>
-  Math.floor(Math.sqrt(Math.max(0, xp) / 35)) + 1;
-export const levelStart = (l: number) => 35 * (l - 1) * (l - 1);
+const ADVANCED_XP = 35 * 99 * 99;
+export function level(xp: number) {
+  if (!Number.isFinite(xp)) return 1;
+  if (xp < ADVANCED_XP) return Math.floor(Math.sqrt(Math.max(0, xp) / 35)) + 1;
+  let value = 100 + Math.floor(Math.log1p((xp - ADVANCED_XP) * .12 / 7000) / Math.log(1.12));
+  // Verify the boundary instead of rounding the logarithm across a level.
+  while (value > 100 && xp < levelStart(value)) value--;
+  while (xp >= levelStart(value + 1)) value++;
+  return value;
+}
+export const levelStart = (l: number) => l <= 100
+  ? 35 * (l - 1) * (l - 1)
+  : ADVANCED_XP + 7000 * (Math.pow(1.12, l - 100) - 1) / .12;
 export function stats(s: Save, p = s.program) {
   const out: Record<Stat, number> = {
     speed: 1,
@@ -230,17 +256,27 @@ export function stats(s: Save, p = s.program) {
     stability: 1,
     reload: 1,
     payload: 1,
+    traction: 1,
+    cooling: 1,
+    oxygen: 1,
+    automation: 1,
+    overdrive: 1,
+    aerodynamics: 1,
   };
   for (const id of s.researched) {
     const n = NODE_MAP.get(id);
     if (n && (n.program === p || n.program === "global")) {
       for (const [stat, value] of Object.entries(n.effects))
-        out[stat as Stat] += value;
+        out[stat as Stat] += value * talentRank(s, id);
     }
   }
   for (const item of s.inventory) {
     if (item.program === p && s.equipped.includes(item.id))
-      for (const affix of item.affixes) out[affix.stat] += affix.value;
+      for (const [stat, value] of Object.entries(gearEffects(item))) out[stat as Stat] += value;
+  }
+  for (const project of DEVELOPMENT_PROJECTS) {
+    const ranks = s.development[project.id] ?? 0;
+    for (const [stat,value] of Object.entries(project.effects ?? {})) out[stat as Stat] += value * ranks;
   }
   const lv = level(s.progress[p].xp);
   if (p === "projectile") {
@@ -250,7 +286,27 @@ export function stats(s: Save, p = s.program) {
     out.stamina += (lv - 1) * 0.08;
     out.speed += (lv - 1) * 0.03;
   }
+  // Additive training is combined first. Physical breakthroughs then multiply
+  // the result, so bionic and field technologies create new speed scales.
+  for (const id of s.researched) {
+    const n=NODE_MAP.get(id);
+    if (n && (n.program===p || n.program==='global'))
+      for (const [stat,value] of Object.entries(n.multipliers ?? {})) out[stat as Stat] *= Math.pow(value,talentRank(s,id));
+  }
+  for (const item of s.inventory) if(item.program===p && s.equipped.includes(item.id))
+    for(const [stat,value] of Object.entries(gearMultipliers(item))) out[stat as Stat] *= value;
+  for (const project of DEVELOPMENT_PROJECTS) for(const [stat,value] of Object.entries(project.multipliers ?? {}))
+    out[stat as Stat] *= Math.pow(value,s.development[project.id] ?? 0);
+  for(const stat of Object.keys(out) as Stat[]) out[stat]=Math.max(.15,Math.min(1e12,out[stat]));
   return out;
+}
+export const era = currentEra;
+export const talentRank = (s: Save,id:string) => s.talentRanks[id] ?? (s.researched.includes(id) ? 1 : 0);
+export const talentCost = (_s: Save,id:string) => NODE_MAP.get(id)?.cost ?? Infinity;
+export const spentTalents = (s: Save) => s.researched.reduce((total,id)=>total+talentRank(s,id),0);
+export function grantRP(s:Save,amount:number):Save {
+  if(!Number.isFinite(amount) || amount<=0)return s;
+  return {...s,science:Math.min(1e15,s.science+Math.min(10000000,Math.floor(amount))),notice:'Test RP added.'};
 }
 export const totalTrials = (s: Save) =>
   Object.values(s.progress).reduce((a, p) => a + p.trials, 0);
@@ -258,11 +314,9 @@ export const totalDistance = (s: Save) =>
   Object.values(s.progress).reduce((a, p) => a + p.distance, 0) +
   (s.trial?.distance ?? 0);
 export const equipmentUnlocked = (s: Save) =>
-  totalTrials(s) >= 4 && s.progress.runner.bestDistance >= 200;
+  totalTrials(s) >= 2 || s.vouchers > 0 || s.inventory.length > 0;
 export const sharedUnlocked = (s: Save) =>
-  totalTrials(s) >= 10 &&
-  s.progress.runner.bestDistance >= 1000 &&
-  s.researched.filter((id) => id.startsWith("runner-")).length >= 8;
+  currentEra(s) >= 2;
 export function trainingProgress(s: Save) {
   const xp = s.progress[s.program].xp,
     lv = level(xp);
@@ -320,10 +374,16 @@ export function routeChallenge(s: Save) {
         ? ["Firm trail", "Rough trail", "Packed gravel"]
         : ["Open road", "Broken surface", "Smooth road"];
   const pressure = frontierPressure(d);
+  const st = stats(s);
+  const speedPenalty = .38 / Math.sqrt(st.traction);
+  let terrainDrain = 1 + (pressure * (effort ? 1.25 : recovery ? .78 : 1) - 1) / Math.sqrt(st.oxygen);
+  if (hasAbility(s, "trailcraft") && d >= 70) terrainDrain = 1 + (terrainDrain - 1) * .65;
+  const bio = biomeAt(d);
+  if ((bio.short === "Desert" && hasAbility(s, "heat")) || (bio.short === "Alpine" && hasAbility(s, "altitude"))) terrainDrain = 1 + (terrainDrain - 1) * .5;
   return {
     name: names[kind],
     description: effort
-      ? "Uneven footing: 38% slower, 25% extra energy use. Acceleration restores speed on smooth ground."
+      ? `Uneven footing: ${Math.round(speedPenalty * 100)}% slower. Traction reduces the slowdown; acceleration restores speed afterwards.`
       : recovery
         ? "Smooth footing: 8% faster, 22% less energy use."
         : "Normal footing. No surface penalty.",
@@ -331,24 +391,19 @@ export function routeChallenge(s: Save) {
     remaining: length - (d % length),
     difficulty: (effort ? "effort" : recovery ? "recovery" : "easy") as
       "effort" | "recovery" | "easy",
-    drainMultiplier: pressure * (effort ? 1.25 : recovery ? 0.78 : 1),
-    speedMultiplier: effort ? 0.62 : recovery ? 1.08 : 1,
+    drainMultiplier: terrainDrain,
+    speedMultiplier: effort ? 1 - speedPenalty : recovery ? 1.08 : 1,
   };
 }
 export function available(s: Save, id: string) {
   const n = NODE_MAP.get(id);
-  // The first debrief offers one experiment; the next run tests that choice.
-  // Bank any extra research earned through careful pacing for later.
-  const firstDebriefComplete =
-    totalTrials(s) === 1 &&
-    s.researched.some((discovery) => discovery.startsWith("runner-"));
   return (
     !!n &&
-    !firstDebriefComplete &&
-    !s.researched.includes(id) &&
+    currentEra(s) >= n.era &&
+    talentRank(s,id) < n.maxRank &&
     (!n.choiceGroup ||
       !s.researched.some(
-        (owned) => NODE_MAP.get(owned)?.choiceGroup === n.choiceGroup,
+        (owned) => owned !== id && NODE_MAP.get(owned)?.choiceGroup === n.choiceGroup,
       )) &&
     n.requires.every((r) => s.researched.includes(r)) &&
     (!n.anyOf?.length || n.anyOf.some((r) => s.researched.includes(r))) &&
@@ -362,8 +417,7 @@ export function afford(s: Save, id: string) {
   return (
     !!n &&
     available(s, id) &&
-    s.science >= n.cost &&
-    (n.program === "global" || s.progress[n.program].funds >= n.localCost)
+    s.talentPoints >= talentCost(s,id)
   );
 }
 export function research(s: Save, id: string): Save {
@@ -371,19 +425,10 @@ export function research(s: Save, id: string): Save {
   const n = NODE_MAP.get(id)!;
   return {
     ...s,
-    science: s.science - n.cost,
-    researched: [...s.researched, id],
-    progress:
-      n.program === "global"
-        ? s.progress
-        : {
-            ...s.progress,
-            [n.program]: {
-              ...s.progress[n.program],
-              funds: s.progress[n.program].funds - n.localCost,
-            },
-          },
-    notice: n.name + " discovered. Permanent research installed.",
+    talentPoints: s.talentPoints - talentCost(s,id),
+    researched: s.researched.includes(id) ? s.researched : [...s.researched,id],
+    talentRanks: {...s.talentRanks,[id]:talentRank(s,id)+1},
+    notice: n.name + " · rank " + (talentRank(s,id)+1) + "/" + n.maxRank + ".",
   };
 }
 export function equipGear(s: Save, id: string): Save {
@@ -411,7 +456,7 @@ export function salvageGear(s: Save, id: string): Save {
   };
 }
 export const suppliesUnlocked = (s: Save) =>
-  s.researched.includes("global-1-1");
+  s.development['supply-lab'] > 0 || s.researched.includes("global-1-1");
 export const hasAbility = (s: Save, ability: string) =>
   s.researched.some((id) => {
     const n = NODE_MAP.get(id);
@@ -469,8 +514,10 @@ export function start(
     ? s
     : {
         ...s,
+        debriefPending: false,
         rest: 0,
         trial: {
+          maxTime: s.program==='projectile' ? 0 : s.sampleDuration,
           time: 0,
           distance: 0,
           speed: hasAbility(s, "rolling-start")
@@ -499,7 +546,7 @@ export function start(
         },
         notice:
           s.program === "projectile"
-            ? "Six shots. Only landed shots earn RP and Impulse."
+            ? "Six shots. Landings earn RP and training XP."
             : "Experiment underway.",
       };
 }
@@ -546,7 +593,7 @@ export const EVENTS = [
     a: "Collect the sample",
     ad: "+3 research at finish · +8 fatigue",
     b: "Keep moving",
-    bd: "+1 Endurance · no detour",
+    bd: "+1 RP at finish · no detour",
   },
   {
     title: "Field support station",
@@ -570,7 +617,7 @@ export const EVENTS = [
     a: "Stop for 4 seconds",
     ad: "Restore 5% energy",
     b: "Keep running",
-    bd: "+1 Endurance",
+    bd: "+1 RP at finish",
   },
   {
     title: "A loose route marker",
@@ -585,8 +632,8 @@ export function eventDetails(s: Save) {
   const e = EVENTS[s.trial?.event ?? 0];
   return {
     ...e,
-    ad: e.ad.split("Endurance").join(PROGRAMS[s.program].currency),
-    bd: e.bd.split("Endurance").join(PROGRAMS[s.program].currency),
+    ad: e.ad.split("Endurance").join("RP"),
+    bd: e.bd.split("Endurance").join("RP"),
   };
 }
 export function decide(s: Save, choice: "a" | "b"): Save {
@@ -610,14 +657,7 @@ export function decide(s: Save, choice: "a" | "b"): Save {
     if (choice === "a") {
       next.samples += 3;
       next.fatigue += 8;
-    } else
-      progress = {
-        ...progress,
-        [s.program]: {
-          ...progress[s.program],
-          funds: progress[s.program].funds + 1,
-        },
-      };
+    } else next.samples += 1;
   }
   if (event === 2) {
     if (choice === "a") {
@@ -636,14 +676,7 @@ export function decide(s: Save, choice: "a" | "b"): Save {
         100 * stats(s).stamina - next.fatigue,
         next.energy + 5 * stats(s).stamina,
       );
-    } else
-      progress = {
-        ...progress,
-        [s.program]: {
-          ...progress[s.program],
-          funds: progress[s.program].funds + 1,
-        },
-      };
+    } else next.samples += 1;
   }
   if (event === 5 && choice === "a") {
     next.samples += 2;
@@ -675,7 +708,7 @@ export function pendingRewards(s: Save) {
   return {
     science: Math.floor(
       (Math.sqrt(t.distance) * 2.1 + t.samples + survey) *
-        st.yield *
+        st.yield * (1+Math.log10(1+t.distance/1000)) *
         observation,
     ),
     funds: Math.floor(Math.sqrt(t.distance) * 0.5),
@@ -700,8 +733,9 @@ export function finish(s: Save): Save {
   return {
     ...s,
     trial: null,
-    rest: s.auto ? 7 : 0,
-    science: s.science + science,
+    debriefPending: !s.auto,
+    rest: s.auto ? Math.max(1,7 / Math.sqrt(stats(s).automation)) : 0,
+    science: Math.min(1e15,s.science + science),
     progress: {
       ...s.progress,
       [s.program]: {
@@ -719,11 +753,7 @@ export function finish(s: Save): Save {
       distance(t.distance) +
       " logged. +" +
       science +
-      " research · +" +
-      funds +
-      " " +
-      PROGRAMS[s.program].currency +
-      " · +" +
+      " RP · +" +
       t.lastXP +
       (s.program === "projectile"
         ? " XP from landed shots."
@@ -749,7 +779,7 @@ export function projectilePhysics(s: Save): FlightConfig {
       ? 2
       : 45;
   return {
-    speed: base * Math.max(0.2, st.launchSpeed) * Math.max(0.5, st.speed),
+    speed: Math.min(1e7,base * Math.max(0.2, st.launchSpeed) * Math.max(0.5, st.speed)),
     angle,
     height:
       variant === "sling"
@@ -784,6 +814,7 @@ export function projectileFlight(s: Save) {
     completed: b?.completed ?? 0,
     remaining: SHOTS_PER_TRIAL - (b?.completed ?? 0),
     lastRange: b?.lastRange ?? 0,
+    clockRate: projectileClockRate(b?.config ?? projectilePhysics(s)),
     angle:
       b?.phase === "flight"
         ? (b.config?.angle ?? projectilePhysics(s).angle)
@@ -792,6 +823,11 @@ export function projectileFlight(s: Save) {
       ? predictFlight(b?.config ?? projectilePhysics(s)).range
       : null,
   };
+}
+/** High-energy trajectories use an accelerated flight clock, with SI gravity
+ * and distance unchanged. A long flight need not become hours of idle UI. */
+export function projectileClockRate(config:FlightConfig) {
+  return Math.min(25000,Math.max(1,config.speed/400));
 }
 function stepProjectile(s: Save, dt: number): Save {
   const t = { ...s.trial! },
@@ -817,7 +853,7 @@ function stepProjectile(s: Save, dt: number): Save {
       );
     }
   } else if (b.phase === "flight") {
-    b = advanceFlight(b, dt, config);
+    b = advanceFlight(b, dt*projectileClockRate(b.config ?? config), config);
     t.speed = Math.hypot(b.vx, b.vy);
     t.peak = Math.max(t.peak, t.speed);
     if (b.phase === "landed") {
@@ -825,7 +861,7 @@ function stepProjectile(s: Save, dt: number): Save {
       b.lastRange = b.x;
       b.totalRange += b.x;
       t.distance = Math.max(t.distance, b.x);
-      b.science += Math.max(1, Math.floor(Math.sqrt(b.x) * 1.3 * st.yield));
+      b.science += Math.max(1, Math.floor(Math.sqrt(b.x) * 1.3 * st.yield * st.payload * (1+Math.log10(1+b.x/1000))));
       b.funds += Math.max(1, Math.floor(Math.sqrt(b.x) * 0.35 * st.payload));
       const earned = Math.max(1, Math.floor(Math.sqrt(b.x) * 0.7 * st.xp));
       t.lastXP += earned;
@@ -889,16 +925,8 @@ export function step(s: Save, dt: number): Save {
   if (s.program === "projectile") return stepProjectile(s, dt);
   const t = { ...s.trial };
   const st = stats(s);
-  const bio = biomeAt(t.distance);
   const challenge = routeChallenge(s);
-  let terrainDrain = challenge.drainMultiplier;
-  if (hasAbility(s, "trailcraft") && t.distance >= 70)
-    terrainDrain = 1 + (terrainDrain - 1) * 0.65;
-  if (
-    (bio.short === "Desert" && hasAbility(s, "heat")) ||
-    (bio.short === "Alpine" && hasAbility(s, "altitude"))
-  )
-    terrainDrain = 1 + (terrainDrain - 1) * 0.5;
+  const terrainDrain = challenge.drainMultiplier;
   if (
     hasAbility(s, "second-wind") &&
     !t.usedSecondWind &&
@@ -942,7 +970,7 @@ export function step(s: Save, dt: number): Save {
             ? 0.2
             : 0.13) *
       Math.sqrt(terrainDrain)) /
-    st.resilience;
+    (st.resilience * Math.sqrt(st.oxygen));
   const routeDrain =
     t.route === "shade"
       ? 0.92
@@ -960,12 +988,17 @@ export function step(s: Save, dt: number): Save {
       terrainDrain *
       routeDrain) /
     (s.pace === "recover" || resting ? 1 : st.economy);
+  // Cooling and streamlining become useful when assisted movement is fast
+  // enough to generate substantial heat and drag. They do not punish a new
+  // runner moving at ordinary walking/running speeds.
+  const heat = s.pace==='push' ? 1+Math.log2(1+Math.max(0,t.speed-30)/100)/Math.sqrt(st.cooling) : 1;
+  const dragLoss = 1+Math.log2(1+Math.max(0,t.speed-30)/1000)/Math.sqrt(st.aerodynamics);
   t.energy = Math.max(
     0,
     Math.min(
       maxEnergy,
       t.energy -
-        drain * dt +
+        drain * dt * (s.pace==='recover' || resting ? 1 : heat*dragLoss) +
         (t.secondWind > 0 && s.pace === "steady" ? 0.8 * dt * st.recovery : 0),
     ),
   );
@@ -977,13 +1010,13 @@ export function step(s: Save, dt: number): Save {
     ? 0
     : (PROGRAMS[s.program].base * st.speed * multiplier + (st.wind - 1) * 2) *
       (hasAbility(s, "negative-split") && t.distance >= 1000 ? 1.15 : 1) *
-      (s.pace === "push" ? 1.3 : s.pace === "recover" ? 0.4 : 1) *
+      (s.pace === "push" ? 1.3*Math.pow(st.overdrive,.35) : s.pace === "recover" ? 0.4 : 1) *
       challenge.speedMultiplier *
       (t.route === "shade" ? 0.94 : t.route === "fast" ? 1.06 : 1) *
       (t.energy < 20 ? 0.55 + (0.45 * t.energy) / 20 : 1);
   // Braking responds quickly; rebuilding speed after rough paving takes training.
   t.speed +=
-    (goal - t.speed) *
+    (Math.min(1e8,goal) - t.speed) *
     (1 - Math.exp(-dt * (goal < t.speed ? 1.4 : 0.12 * st.acceleration)));
   t.distance += t.speed * dt;
   t.peak = Math.max(t.peak, t.speed);
@@ -1045,7 +1078,7 @@ export function step(s: Save, dt: number): Save {
         };
     }
   }
-  return t.energy <= 0 || maxEnergy <= 1 ? finish(next) : next;
+  return t.energy <= 0 || maxEnergy <= 1 || ((t.maxTime ?? 0)>0 && t.time>=t.maxTime!) ? finish(next) : next;
 }
 const number = (n: unknown, d = 0) =>
   typeof n === "number" && Number.isFinite(n) ? Math.max(0, n) : d;
@@ -1057,6 +1090,14 @@ export function restore(raw: string | null, now = Date.now()): Save {
     if (x.version !== 2) return s;
     const keys = Object.keys(PROGRAMS) as Program[];
     s.science = number(x.science, 0);
+    s.science = Math.min(1e15,s.science);
+    s.talentPoints=Math.min(1e12,Math.floor(number(x.talentPoints)));
+    s.vouchers=Math.min(1e12,Math.floor(number(x.vouchers)));
+    s.currencyBought={talent:Math.min(1e12,Math.floor(number(x.currencyBought?.talent))),voucher:Math.min(1e12,Math.floor(number(x.currencyBought?.voucher)))};
+    for(const p of DEVELOPMENT_PROJECTS) {
+      const rank=Math.min(p.maxRank,Math.floor(number(x.development?.[p.id])));
+      if(rank>0)s.development[p.id]=rank;
+    }
     s.storySeen = Array.isArray(x.storySeen)
       ? x.storySeen.filter((v: unknown) => typeof v === "string")
       : [];
@@ -1069,6 +1110,10 @@ export function restore(raw: string | null, now = Date.now()): Save {
     s.researched = NODES.filter(
       (n) => Array.isArray(x.researched) && x.researched.includes(n.id),
     ).map((n) => n.id);
+    for(const id of s.researched) {
+      const n=NODE_MAP.get(id)!;
+      s.talentRanks[id]=Math.max(1,Math.min(n.maxRank,Math.floor(number(x.talentRanks?.[id],1))));
+    }
     s.modules = [];
     s.inventory = validateGear(x.inventory);
     s.equipped = [];
@@ -1106,6 +1151,8 @@ export function restore(raw: string | null, now = Date.now()): Save {
       };
     }
     s.auto = x.auto === true;
+    s.debriefPending=x.debriefPending===true;
+    s.sampleDuration=[0,120,300,900].includes(x.sampleDuration) ? x.sampleDuration : 0;
     s.pace = ["steady", "push", "recover"].includes(x.pace) ? x.pace : "steady";
     s.launchAngle = Math.max(20, Math.min(65, number(x.launchAngle, 45)));
     s.history = Array.isArray(x.history)
@@ -1130,6 +1177,7 @@ export function restore(raw: string | null, now = Date.now()): Save {
               ),
           )
           .slice(0, 30)
+          .map((r: Result) => ({id:Math.floor(Math.min(1e12,number(r.id))),program:r.program,science:Math.min(1e15,number(r.science)),funds:Math.min(1e15,number(r.funds)),xp:Math.min(1e15,number(r.xp)),speed:Math.min(1e15,number(r.speed)),distance:Math.min(1e15,number(r.distance)),duration:Math.min(1e15,number(r.duration))}))
       : [];
     // Resume only a validated live expedition; offline rewards stay conservative.
     if (
@@ -1156,6 +1204,7 @@ export function restore(raw: string | null, now = Date.now()): Save {
     ) {
       s.trial = {
         ...x.trial,
+        maxTime:[0,120,300,900].includes(x.trial.maxTime) ? x.trial.maxTime : 0,
         speed: 0,
         secondWind: number(x.trial.secondWind),
         usedSecondWind: x.trial.usedSecondWind === true,
@@ -1190,7 +1239,7 @@ export function restore(raw: string | null, now = Date.now()): Save {
               config[key] >= 0,
           ) &&
             config.angle <= 90 &&
-            config.speed > 0 &&
+            config.speed > 0 && config.speed <= 1e7 &&
             config.reload > 0 &&
             typeof config.charged === "boolean" &&
             typeof config.skip === "boolean");
@@ -1231,12 +1280,15 @@ export function restore(raw: string | null, now = Date.now()): Save {
       }
     }
     const elapsed = Math.min(
-      7200,
+      86400 * 7,
       Math.max(0, (now - number(x.lastActive, now)) / 1000),
     );
     if (s.auto && elapsed > 120 && totalTrials(s) > 0) {
-      s.offline = Math.floor(elapsed * 0.08 * stats(s).yield);
-      s.science += s.offline;
+      const lastRate=s.history[0] ? s.history[0].science/Math.max(65,s.history[0].duration+7) : .08;
+      const support=Math.min(.8,.12+.08*Math.log2(stats(s).automation));
+      const supportIncome = Math.floor(elapsed * Math.min(1e15,lastRate) * support);
+      s.offline = Math.min(1e15-s.science,supportIncome);
+      s.science = Math.min(1e15,s.science+s.offline);
       s.notice =
         "The support team collected " +
         s.offline +

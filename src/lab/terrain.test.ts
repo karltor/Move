@@ -55,7 +55,7 @@ it("shows asphalt behind and gravel ahead in the same frame at the forest bounda
   const surface = t.mesh.geometry.getAttribute("surface");
   expect(surface.getX(20 * 11 + 5)).toBe(0);
   expect(surface.getX(140 * 11 + 5)).toBe(1);
-  for (const d of [0, 100, 1000, 10000, 100000, 1000000]) {
+  for (const d of [0, 100, 1000, 10000, 100000, 1000000, 1e9, 1e12]) {
     t.update(d);
     const p = t.mesh.geometry.getAttribute("position");
     for (let i = 0; i < p.count; i++) {

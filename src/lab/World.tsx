@@ -10,6 +10,7 @@ import {
   biomeBlend,
   BIOMES,
   projectilePhysics,
+  projectileClockRate,
   hasAbility,
   type Save,
 } from "./game";
@@ -20,16 +21,19 @@ export default function World({
   game,
   closeup,
   onView,
+  timeScale = 1,
 }: {
   game: Save;
   closeup: boolean;
   onView: () => void;
+  timeScale?: number;
 }) {
   const host = useRef<HTMLDivElement>(null),
     current = useRef(game),
-    view = useRef(closeup);
+    view = useRef(closeup), rate = useRef(timeScale);
   current.current = game;
   view.current = closeup;
+  rate.current = timeScale;
   const [error, setError] = useState(""),
     [loading, setLoading] = useState(true);
   useEffect(() => {
@@ -394,7 +398,7 @@ export default function World({
     function animate(now: number) {
       if (!alive) return;
       frame = requestAnimationFrame(animate);
-      const dt = Math.min(0.05, (now - last) / 1000);
+      const dt = Math.min(0.05, (now - last) / 1000) * rate.current;
       last = now;
       if (document.hidden) return;
       const s = current.current,
@@ -520,7 +524,7 @@ export default function World({
         1 - Math.exp(-dt * 1.4),
       );
       for (let i = 0; i < 30; i++) {
-        const x = ((i * 6 - renderDistance * 0.65 + 9000) % 180) - 90;
+        const x = (((i * 6 - renderDistance * 0.65) % 180 + 180) % 180) - 90;
         const surface = routeSurface(renderDistance + x / 0.65);
         matrix.makeScale(surface.markings, 1, surface.markings);
         matrix.setPosition(x, 0.013, -1.5);
@@ -540,7 +544,7 @@ export default function World({
         for (let i = 0; i < item.positions.length; i++) {
           const a = item.positions[i];
           pos.set(
-            ((a.x - visualDistance + 12000000) % 120) - 60,
+            (((a.x - visualDistance) % 120 + 120) % 120) - 60,
             0,
             ballistics ? a.z - 22 : a.z,
           );
@@ -679,7 +683,7 @@ export default function World({
           (item) =>
             item.program === "projectile" && s.equipped.includes(item.id),
         );
-        const gearKey = fitted.map((item) => item.id).join(":");
+        const gearKey = fitted.map((item) => `${item.id}-${item.upgradeLevel ?? 0}-${item.upgradePath ?? ''}`).join(":");
         if (gearKey !== projectileGearKey) {
           projectileGearKey = gearKey;
           const body = fitted.find((item) => item.slot === "outfit");
@@ -799,7 +803,7 @@ export default function World({
                   m instanceof THREE.MeshStandardMaterial &&
                   m.name.includes("equipment blue")
                 )
-                  m.color.set(color);
+                  {m.color.set(color); m.emissive.set(color);m.emissiveIntensity=worn.glow;}
             });
         }
         const launcher = ballistics && !["rock", "plane"].includes(variant.id);
@@ -883,7 +887,7 @@ export default function World({
                 storedFlight,
                 Math.max(
                   0,
-                  Math.min(0.12, renderTime - (t?.time ?? renderTime)),
+                  Math.max(0,Math.min(0.12, renderTime - (t?.time ?? renderTime))) * projectileClockRate(t?.ballistic?.config ?? projectilePhysics(s)),
                 ),
                 storedFlight.config ?? projectilePhysics(s),
               )

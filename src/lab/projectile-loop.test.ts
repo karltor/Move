@@ -12,9 +12,17 @@ import {
   eventDetails,
   routeChallenge,
   stats,
+  available,
+  research,
+  talentRank,
+  levelStart,
+  projectileClockRate,
   type Save,
 } from "./game";
-import { NODES } from "./research";
+import { NODES, NODE_MAP } from "./research";
+import { DEVELOPMENT_PROJECTS } from "./development";
+import { SLOTS, gearPaths } from "./equipment";
+import { craftGear, upgradeGear } from "./workshop";
 const lab = (variant = "rock"): Save => {
   const s = fresh();
   s.program = "projectile";
@@ -29,6 +37,27 @@ function advance(s: Save, seconds: number) {
 function complete(s: Save) {
   s = start(s, 12);
   for (let i = 0; i < 12000 && s.trial; i++) s = step(s, 0.5);
+  return s;
+}
+function evolvedParticle(): Save {
+  let s = { ...lab("particle"), talentPoints: 1e9, vouchers: 1e9 };
+  s.development = Object.fromEntries(DEVELOPMENT_PROJECTS.filter(p => p.opensEra).map(p => [p.id, 1]));
+  // One lawful specialization per path; mask 8 is the strongest launch build.
+  const candidates = NODES.filter(n => n.program === "projectile" &&
+    (!n.choiceGroup || n.tier === (((8 >> n.lane) & 1) ? 5 : 4)));
+  for (let pass = 0; pass < 12; pass++)
+    for (const n of candidates) if (!talentRank(s, n.id) && available(s, n.id)) s = research(s, n.id);
+  for (const id of s.researched) s.talentRanks[id] = NODE_MAP.get(id)!.maxRank;
+  for (const n of NODES.filter(n => n.program === "global").sort((a, b) => a.tier - b.tier))
+    while (available(s, n.id)) s = research(s, n.id);
+  s.progress.projectile.xp = levelStart(180);
+  s.launchAngle = 65;
+  for (const slot of SLOTS) {
+    s = craftGear(s, "projectile", slot);
+    const item = s.inventory[s.inventory.length - 1]!, path = gearPaths(item)[0].id;
+    for (let rank = 1; rank <= 200; rank++) s = upgradeGear(s, item.id, rank === 5 ? path : undefined);
+    s.equipped.push(item.id);
+  }
   return s;
 }
 describe("projectile experiments", () => {
@@ -94,6 +123,29 @@ describe("projectile experiments", () => {
       expect(done.history[0].science).toBeGreaterThan(0);
     }
   });
+  it("finishes all six fully evolved particle shots with a visible accelerated flight clock", () => {
+    const s = evolvedParticle(), config = projectilePhysics(s);
+    expect(config.speed).toBeGreaterThan(1_000_000);
+    expect(projectileClockRate(config)).toBeGreaterThan(1000);
+    expect(projectileClockRate(config)).toBeLessThanOrEqual(25_000);
+    let active = start(s, 12), largestCompleted = 0;
+    for (let i = 0; i < 1200 && active.trial; i++) {
+      active = step(active, .5);
+      if (active.trial) {
+        expect(active.trial.energy).toBe(100);
+        const shot = active.trial.ballistic!;
+        largestCompleted = Math.max(largestCompleted, shot.completed);
+        expect([shot.x, shot.y, shot.vx, shot.vy].every(Number.isFinite)).toBe(true);
+      }
+    }
+    expect(active.trial).toBeNull();
+    expect(largestCompleted).toBe(6);
+    expect(active.history[0].duration).toBeLessThan(600);
+    expect(active.history[0].distance).toBeGreaterThan(1_000_000);
+    expect(Number.isFinite(active.history[0].science)).toBe(true);
+    expect(active.history[0].science).toBeGreaterThan(0);
+    expect(projectileFlight(active).clockRate).toBe(projectileClockRate(projectilePhysics(active)));
+  });
   it("resumes a real flight and safely migrates a pre-ballistics runtime to staging", () => {
     const s = advance(start(lab(), 20), 3.5);
     const restored = restore(JSON.stringify(s));
@@ -128,7 +180,7 @@ describe("visible surface events", () => {
     expect(seen.size).toBeGreaterThan(2);
     const s = start(fresh(), 12);
     s.trial!.event = 1;
-    expect(eventDetails(s).bd).toContain("Endurance");
+    expect(eventDetails(s).bd).toContain("RP");
     expect(eventDetails(s).bd).not.toContain("program currency");
     s.trial!.distance = 40;
     expect(routeChallenge(s).name).toBe("Roadworks");

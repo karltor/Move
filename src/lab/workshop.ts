@@ -1,0 +1,112 @@
+import type { Save } from "./game";
+import { currentEra, ERA_NAMES } from "./development";
+import { GEAR_LEVEL_CAP, GEAR_MILESTONES, gearEffects, gearMultipliers, gearName, gearPaths, gearStage, type Gear, type Slot } from "./equipment";
+import type { Program, Stat } from "./research";
+
+export const CRAFT_CATALOG: Record<Program, Record<Slot, { name: string; stat: Stat; cost: number; description: string }>> = {
+  runner: {
+    footwear: { name: "Running shoes", stat: "speed", cost: 2, description: "A reliable pair with 5% more speed. Upgrade the same pair into powered legs." },
+    outfit: { name: "Training vest", stat: "stamina", cost: 2, description: "A modest 5% energy reserve. Develop cooling, oxygen delivery and augmented organs." },
+    instrument: { name: "Stopwatch", stat: "xp", cost: 2, description: "Learn 5% faster from measured runs. Later processors guide movement and collect more research." },
+  },
+  projectile: {
+    footwear: { name: "Throwing grip", stat: "launchSpeed", cost: 2, description: "A repeatable release adds 5% launch velocity. Develop launch rails and impulse chambers." },
+    outfit: { name: "Balanced stone", stat: "drag", cost: 2, description: "A smoother body improves aerodynamic efficiency by 5%. Develop gliding and guided flight bodies." },
+    instrument: { name: "Range tape", stat: "yield", cost: 2, description: "Measured landings earn 5% more RP. Build rangefinding and flight guidance systems." },
+  },
+  wheels: {
+    footwear: { name: "Road tyres", stat: "speed", cost: 2, description: "Reduce rolling losses for 5% more speed. Develop traction rings and magnetic hubs." },
+    outfit: { name: "Steel frame", stat: "economy", cost: 2, description: "A stable frame improves energy efficiency by 5%. Add suspension, cooling and powered structure." },
+    instrument: { name: "Speedometer", stat: "xp", cost: 2, description: "Measured driving gives 5% more experience. Develop terrain response and navigation computers." },
+  },
+};
+export const stageLevelCap = (s: Save) => [9, 24, 49, 74, 99, 100, GEAR_LEVEL_CAP][currentEra(s)];
+export function craftCost(_s: Save, program: Program, slot: Slot) {
+  return CRAFT_CATALOG[program][slot].cost;
+}
+export function craftGear(s: Save, program: Program, slot: Slot): Save {
+  const recipe = CRAFT_CATALOG[program]?.[slot];
+  if (!recipe || !s.unlocked.includes(program) || s.inventory.length >= 90 || s.vouchers < recipe.cost) return s;
+  const gear: Gear = {
+    id: "gear-" + s.nextGear,
+    program,
+    name: recipe.name,
+    slot,
+    rarity: "Common",
+    foundAt: 0,
+    affixes: [{ stat: recipe.stat, value: .05 }],
+    upgradeLevel: 0,
+    crafted: true,
+    era: 0,
+  };
+  return { ...s, vouchers: s.vouchers - recipe.cost, inventory: [...s.inventory, gear], nextGear: s.nextGear + 1, notice: `${gear.name} built. Equip it or improve its components.` };
+}
+export function upgradeCost(s: Save, id: string) {
+  const item = s.inventory.find((g) => g.id === id);
+  if (!item || (item.upgradeLevel ?? 0) >= GEAR_LEVEL_CAP) return 0;
+  const next = (item.upgradeLevel ?? 0) + 1;
+  if (next > 100) return Math.ceil(1050 + Math.pow(next - 100, 1.18) * 5);
+  const component = next < 10 ? 1 : next < 25 ? 1.5 : next < 50 ? 2.5 : next < 75 ? 4 : next < 100 ? 6 : 8;
+  return Math.ceil(Math.pow(1.05, next - 1) * component);
+}
+export function pathChoices(g: Gear) {
+  return gearPaths(g);
+}
+export function upgradeRequirement(s: Save, id: string) {
+  const item = s.inventory.find((g) => g.id === id);
+  if (!item) return "Choose an item.";
+  if (s.trial && item.program === s.program && s.equipped.includes(id)) return "Equipped components stay unchanged until this experiment ends.";
+  const next = (item.upgradeLevel ?? 0) + 1;
+  if (next > GEAR_LEVEL_CAP) return "Fully overclocked.";
+  if (next > stageLevelCap(s)) return `${ERA_NAMES[currentEra(s) + 1]} unlocks level ${next}.`;
+  if (next >= 5 && !item.upgradePath) return "Choose a permanent enhancement path.";
+  return "";
+}
+export function upgradeGear(s: Save, id: string, path?: string): Save {
+  const item = s.inventory.find((g) => g.id === id);
+  if (!item || (s.trial && item.program === s.program && s.equipped.includes(id))) return s;
+  const next = (item.upgradeLevel ?? 0) + 1;
+  if (next > GEAR_LEVEL_CAP || next > stageLevelCap(s)) return s;
+  if (path && (next < 5 || item.upgradePath || !gearPaths(item).some((p) => p.id === path))) return s;
+  const selectedPath = item.upgradePath ?? path;
+  if (next >= 5 && !selectedPath) return s;
+  const cost = upgradeCost(s, id);
+  if (s.vouchers < cost) return s;
+  const upgraded: Gear = { ...item, upgradeLevel: next, upgradePath: selectedPath, era: next > 100 ? 6 : GEAR_MILESTONES.filter((n) => next >= n).length };
+  upgraded.name = gearName(upgraded);
+  upgraded.rarity = ["Common", "Uncommon", "Rare", "Epic", "Epic", "Epic"][gearStage(upgraded)] as Gear["rarity"];
+  return { ...s, vouchers: s.vouchers - cost, inventory: s.inventory.map((g) => g.id === id ? upgraded : g), notice: `${upgraded.name} · level ${next}${GEAR_MILESTONES.includes(next as typeof GEAR_MILESTONES[number]) ? " · new components installed" : ""}.` };
+}
+/** A batch purchase is atomic: the complete quoted upgrade must be affordable. */
+export function quoteUpgrade(s: Save, id: string, target: number, path?: string) {
+  const item = s.inventory.find((g) => g.id === id);
+  if (!item) return { levels: 0, cost: 0, level: 0, gear: null, blocked: "Choose an item." };
+  const level = item.upgradeLevel ?? 0;
+  const goal = Math.min(GEAR_LEVEL_CAP, stageLevelCap(s), Math.floor(target));
+  if (!Number.isFinite(target) || goal <= level) return { levels: 0, cost: 0, level, gear: item, blocked: upgradeRequirement(s, id) };
+  if (s.trial && item.program === s.program && s.equipped.includes(id)) return { levels: 0, cost: 0, level, gear: item, blocked: upgradeRequirement(s, id) };
+  if (path && (item.upgradePath || !gearPaths(item).some((p) => p.id === path))) return { levels: 0, cost: 0, level, gear: item, blocked: "This enhancement path cannot be selected." };
+  if (goal >= 5 && !item.upgradePath && !path) return { levels: 0, cost: 0, level, gear: item, blocked: "Choose a permanent enhancement path." };
+  // Quote without spending, so the UI can show the whole cost even when short.
+  let cost = 0, preview = item;
+  for (let rank = level + 1; rank <= goal; rank++) {
+    cost += upgradeCost({ ...s, inventory: s.inventory.map((g) => g.id === id ? preview : g) }, id);
+    preview = { ...preview, upgradeLevel: rank, upgradePath: preview.upgradePath ?? (rank >= 5 ? path : undefined), era: rank > 100 ? 6 : GEAR_MILESTONES.filter((n) => rank >= n).length };
+  }
+  preview = { ...preview, name: gearName(preview), rarity: ["Common", "Uncommon", "Rare", "Epic", "Epic", "Epic"][gearStage(preview)] as Gear["rarity"] };
+  return { levels: goal - level, cost, level: goal, gear: preview, blocked: "" };
+}
+export function upgradeGearTo(s: Save, id: string, target: number, path?: string): Save {
+  const quote = quoteUpgrade(s, id, target, path);
+  if (quote.blocked || !quote.levels || !quote.gear || s.vouchers < quote.cost) return s;
+  return { ...s, vouchers: s.vouchers - quote.cost, inventory: s.inventory.map((g) => g.id === id ? quote.gear! : g), notice: `${quote.gear.name} · level ${quote.level}.` };
+}
+export const effectiveAffixes = (g: Gear) => Object.entries(gearEffects(g)).map(([stat, value]) => ({ stat: stat as Stat, value: value! }));
+export function effectiveBonus(g: Gear, stat: Stat) {
+  return (1 + (gearEffects(g)[stat] ?? 0)) * (gearMultipliers(g)[stat] ?? 1) - 1;
+}
+export function nextMilestone(g: Gear) {
+  const level = g.upgradeLevel ?? 0;
+  const next = GEAR_MILESTONES.find((n) => n > level);
+  return next ? { level: next, name: gearName(g, next), preview: { ...g, upgradeLevel: next } as Gear } : level < GEAR_LEVEL_CAP ? { level: Math.min(GEAR_LEVEL_CAP, Math.ceil((level + 1) / 25) * 25), name: "Component overclock", preview: { ...g, upgradeLevel: Math.min(GEAR_LEVEL_CAP, Math.ceil((level + 1) / 25) * 25) } as Gear } : null;
+}

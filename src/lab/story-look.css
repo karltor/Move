@@ -73,6 +73,7 @@
 .story-dialog .story-copy .primary {
   background: #256b5c;
 }
+.story-running-note { color: #537465; font-size: 11px; margin: 0 0 10px; }
 @media (max-height: 650px) and (min-width: 900px) {
   .story-dialog {
     max-height: calc(100dvh - 28px);
